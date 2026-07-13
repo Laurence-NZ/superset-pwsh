@@ -53,6 +53,9 @@
 		"hono": "4.12.23",
 		"kysely": "0.28.17"
 	},
+	"patchedDependencies": {
+		"native-keymap@3.3.9": "patches/native-keymap@3.3.9.patch"
+	},
 	"trustedDependencies": [
 		"better-sqlite3",
 		"bufferutil",

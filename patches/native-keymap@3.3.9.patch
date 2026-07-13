@@ -1,0 +1,12 @@
+diff --git a/binding.gyp b/binding.gyp
+index c8b244b14..810fb2811 100644
+--- a/binding.gyp
++++ b/binding.gyp
+@@ -18,6 +18,7 @@
+             '/guard:cf',
+             '/sdl',
+             '/W3',
++            '/wd4996',
+             '/we4146',
+             '/we4244',
+             '/we4267',

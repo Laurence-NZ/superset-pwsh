@@ -19,10 +19,18 @@ if (!prereqCheck.ok) {
 	process.exit(1);
 }
 
+// node-pty's vendored winpty.gyp runs `cmd /c "cd shared && GetCommitHash.bat"`
+// with a bare (unqualified) batch name. When NoDefaultCurrentDirectoryInExePath
+// is set (common under Windows security policy) cmd won't resolve executables in
+// the current directory, so the .bat is "not recognized" and the rebuild fails.
+// Drop it for the build subprocess only.
+const childEnv = { ...process.env };
+delete childEnv.NoDefaultCurrentDirectoryInExePath;
+
 const result = spawnSync("bun", ["x", "electron-builder", "install-app-deps"], {
 	encoding: "utf8",
 	shell: false,
-	env: process.env,
+	env: childEnv,
 });
 
 const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
