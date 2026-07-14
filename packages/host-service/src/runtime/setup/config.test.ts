@@ -6,6 +6,7 @@ import {
 	getProjectConfigPath,
 	hasConfiguredScripts,
 	loadSetupConfig,
+	mirrorRepoPathForProjects,
 	resolveScript,
 	shellSingleQuote,
 } from "./config";
@@ -64,7 +65,12 @@ function writeUserOverrideByPath(
 	repoPath: string,
 	content: object,
 ) {
-	const dir = join(homeDir, ".superset", "projects", repoPath);
+	const dir = join(
+		homeDir,
+		".superset",
+		"projects",
+		mirrorRepoPathForProjects(repoPath),
+	);
 	mkdirSync(dir, { recursive: true });
 	writeFileSync(join(dir, "config.json"), JSON.stringify(content), "utf-8");
 }
@@ -559,6 +565,8 @@ describe("shellSingleQuote", () => {
 
 describe("getProjectConfigPath", () => {
 	it("appends .superset/config.json to the repoPath", () => {
-		expect(getProjectConfigPath("/tmp/x")).toBe("/tmp/x/.superset/config.json");
+		expect(getProjectConfigPath("/tmp/x")).toBe(
+			join("/tmp/x", ".superset", "config.json"),
+		);
 	});
 });

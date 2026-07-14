@@ -166,6 +166,16 @@ export function getProjectConfigPath(repoPath: string): string {
 }
 
 /**
+ * Mirror an absolute repo path as a nested directory under `projects/`. On
+ * Windows a drive colon (`C:\work\app`) can't appear mid-path, so strip it
+ * (`C\work\app`) to keep the path valid; elsewhere the path is used as-is
+ * (`join` absorbs the leading separator).
+ */
+export function mirrorRepoPathForProjects(repoPath: string): string {
+	return repoPath.replace(/^([A-Za-z]):/, "$1");
+}
+
+/**
  * Candidate user-override files, highest priority first: keyed by the
  * project's repo path mirrored under the projects dir (e.g.
  * `~/.superset/projects/Users/me/work/app/config.json` — discoverable
@@ -178,7 +188,13 @@ function getUserOverridePaths(args: {
 	homeDir: string;
 }): string[] {
 	const projectsDir = join(args.homeDir, SUPERSET_DIR_NAME, PROJECTS_DIR_NAME);
-	const paths = [join(projectsDir, args.repoPath, CONFIG_FILE_NAME)];
+	const paths = [
+		join(
+			projectsDir,
+			mirrorRepoPathForProjects(args.repoPath),
+			CONFIG_FILE_NAME,
+		),
+	];
 	if (!args.projectId.includes("/") && !args.projectId.includes("\\")) {
 		paths.push(join(projectsDir, args.projectId, CONFIG_FILE_NAME));
 	}
