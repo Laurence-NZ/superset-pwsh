@@ -33,6 +33,38 @@ export function playSoundFile(
 		);
 	}
 
+	if (process.platform === "win32") {
+		// Play through WPF MediaPlayer in a short-lived PowerShell child so the
+		// ringtone preview can still kill it on Stop / replace. NaturalDuration is
+		// only known after Open, so open → brief wait → play → sleep the duration.
+		const psPath = soundPath.replaceAll("'", "''");
+		const script = [
+			"Add-Type -AssemblyName PresentationCore;",
+			"$p = New-Object System.Windows.Media.MediaPlayer;",
+			`$p.Open([System.Uri]::new('${psPath}'));`,
+			`$p.Volume = ${volumeDecimal};`,
+			"Start-Sleep -Milliseconds 300;",
+			"$p.Play();",
+			"$d = $p.NaturalDuration;",
+			"if ($d.HasTimeSpan) { Start-Sleep -Seconds $d.TimeSpan.TotalSeconds } else { Start-Sleep -Seconds 5 };",
+			"$p.Stop(); $p.Close();",
+		].join(" ");
+		return execFile(
+			"powershell.exe",
+			[
+				"-NoProfile",
+				"-NonInteractive",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-STA",
+				"-Command",
+				script,
+			],
+			{ windowsHide: true },
+			() => callbacks?.onComplete?.(),
+		);
+	}
+
 	// Linux: paplay --volume accepts 0-65536 (65536 = 100%)
 	const paVolume = Math.round(volumeDecimal * 65536);
 	return execFile(
