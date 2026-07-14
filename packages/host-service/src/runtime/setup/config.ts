@@ -303,11 +303,7 @@ export function resolveScript(
 		: [args.repoPath];
 	for (const root of roots) {
 		for (const ext of extensions) {
-			const scriptPath = join(
-				root,
-				PROJECT_SUPERSET_DIR_NAME,
-				`${key}.${ext}`,
-			);
+			const scriptPath = join(root, PROJECT_SUPERSET_DIR_NAME, `${key}.${ext}`);
 			if (existsSync(scriptPath)) {
 				return { kind: "script", scriptPath, ...(cwd && { cwd }) };
 			}

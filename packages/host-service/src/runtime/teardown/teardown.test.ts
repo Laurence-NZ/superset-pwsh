@@ -61,7 +61,9 @@ describe("teardown initial command", () => {
 				"cmd.exe",
 				"win32",
 			),
-		).toBe('"C:\\work tree\\.superset\\teardown.cmd" && exit /b 0 || exit /b 1');
+		).toBe(
+			'"C:\\work tree\\.superset\\teardown.cmd" && exit /b 0 || exit /b 1',
+		);
 
 		expect(
 			buildTeardownInitialCommand(
@@ -194,7 +196,8 @@ describe("resolveTeardownCommand", () => {
 			});
 
 			expect(resolved).toEqual({
-				initialCommand: "exec bash -c 'docker compose down && bash teardown.sh'",
+				initialCommand:
+					"exec bash -c 'docker compose down && bash teardown.sh'",
 			});
 		} finally {
 			sb.cleanup();

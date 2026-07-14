@@ -19,7 +19,7 @@
 	},
 	"formatter": {
 		"formatWithErrors": true,
-		"lineEnding": "auto"
+		"lineEnding": "lf"
 	},
 	"css": {
 		"parser": {
