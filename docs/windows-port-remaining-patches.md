@@ -96,4 +96,5 @@ affect dev; they matter for the packaged NSIS build (`file://` renderer):
   (only relevant if switching to `@lydell/node-pty`; this branch rebuilds
   `node-pty` natively instead).
 
-Full patch text and rationale: `C:\repos\superset-windows\PATCHES.md`.
+Full patch text and rationale: `docs/superset-windows-PATCHES.md` (vendored
+copy of the `superset-windows` repo's `PATCHES.md`).
