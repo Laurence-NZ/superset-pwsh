@@ -56,6 +56,20 @@ Cut releases on a dedicated release branch (not `main`); `bun run release deskto
 
 ---
 
+## Windows port (this branch)
+
+This branch adds native Windows x64 desktop support on top of `main` and periodically merges `main` back in. Those merges bring upstream refactors that need Windows re-adaptation.
+
+- **Structure a merge as one merge commit + separate follow-up commits** for each Windows adaptation, so the integration and the Windows work review apart.
+- **Run `bun run typecheck` after resolving conflicts.** Upstream frequently changes a shared helper's signature (e.g. `resolveScript`, `writeTempAskpass`) that the Windows layer builds on; git auto-merges the text but the types break with no conflict marker. `bun run lint` must exit 0 too before pushing.
+- **biome `lineEnding` stays `lf`, never `auto`.** On Windows `auto` resolves to CRLF, so biome wants to rewrite every LF file — `bun run lint` fails locally and `lint:fix` would corrupt the whole tree (CI is Linux/LF).
+- **Cross-platform lifecycle scripts:** `resolveScript` (`packages/host-service/src/runtime/setup/config.ts`) is platform-aware and resolves `.ts/.cmd/.bat/.ps1/.sh`; the shell invocation strings are built in `setup-terminal.ts` / `teardown.ts`. Windows shell + notify-hook branching lives in shared helpers (`@superset/shared/shell`, `getManagedNotifyHookCommand`) — extend those, not the callers.
+- **`native-keymap` patch is required** (`patches/native-keymap@3.3.9.patch` + `patchedDependencies`) for the Windows native rebuild; keep it unless upstream bumps native-keymap.
+- **`.git/index.lock` recurs** when an IDE git watcher races a command: if git reports the lock exists, delete `.git/index.lock` and retry.
+- Conflict-hotspot map and full validation matrix: `docs/windows-port-audit.md`.
+
+---
+
 ## Project Structure
 
 All projects in this repo should be structured like this:
