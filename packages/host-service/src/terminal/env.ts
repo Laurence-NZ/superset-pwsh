@@ -219,5 +219,40 @@ export function buildV2TerminalEnv(
 		env.SSL_CERT_FILE = MACOS_SYSTEM_CERT_FILE;
 	}
 
+	if (os.platform() === "win32") {
+		backfillWindowsSystemEnv(env);
+	}
+
 	return env;
+}
+
+/**
+ * Backfill Windows system env vars a normal terminal always has. Without
+ * PATHEXT, PowerShell and where.exe can't map a bare name (`git`) to `git.exe`,
+ * so *nothing* on PATH resolves even though PATH itself is correct. The other
+ * vars keep .NET/NuGet (`%SystemDrive%`) and MSBuild parallelism working.
+ *
+ * Backfill only — never override a value the shell snapshot already carried.
+ */
+function backfillWindowsSystemEnv(env: Record<string, string>): void {
+	const has = (name: string): boolean =>
+		Object.keys(env).some(
+			(key) => key.toLowerCase() === name.toLowerCase() && Boolean(env[key]),
+		);
+
+	const defaults: Record<string, string | undefined> = {
+		PATHEXT:
+			process.env.PATHEXT ||
+			".COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC",
+		SYSTEMROOT: process.env.SYSTEMROOT,
+		WINDIR: process.env.WINDIR,
+		SYSTEMDRIVE: process.env.SYSTEMDRIVE,
+		PROGRAMDATA: process.env.PROGRAMDATA,
+		NUMBER_OF_PROCESSORS: process.env.NUMBER_OF_PROCESSORS,
+		PROCESSOR_ARCHITECTURE: process.env.PROCESSOR_ARCHITECTURE,
+	};
+
+	for (const [key, value] of Object.entries(defaults)) {
+		if (value && !has(key)) env[key] = value;
+	}
 }
