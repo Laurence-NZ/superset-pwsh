@@ -652,6 +652,15 @@ export class FsWatcherManager {
 			},
 			{
 				ignore: this.ignore,
+				// Windows: pin the native ReadDirectoryChangesW backend. Left to
+				// auto-select, @parcel/watcher probes for watchman by spawning
+				// `watchman --output-encoding=bser get-sockname` from native code;
+				// with watchman absent that console process flashes a window and
+				// steals foreground focus on every watch start. (No-op elsewhere —
+				// mac/linux keep fs-events/inotify auto-selection.)
+				...(process.platform === "win32"
+					? { backend: "windows" as const }
+					: {}),
 			},
 		);
 
