@@ -4,15 +4,30 @@ const SAFE_SHELL_TOKEN = /^[A-Za-z0-9_@%+=:,./~-]+$/;
 const ENV_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 function quoteShellToken(value: string): string {
+	// `&&` is a control operator the launch spec preserves — keep it verbatim.
+	if (value === "&&") return "&&";
 	if (value === "") return "''";
 	if (SAFE_SHELL_TOKEN.test(value)) return value;
 	return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
 function parseTokens(input: string): string[] {
-	return parse(input).filter(
-		(token): token is string => typeof token === "string",
-	);
+	// shell-quote emits control operators as `{ op: "&&" }` objects. Keep `&&`
+	// (users write chains like `clear && claude`); drop all other operators.
+	return parse(input)
+		.map((token) => {
+			if (typeof token === "string") return token;
+			if (
+				token &&
+				typeof token === "object" &&
+				"op" in token &&
+				token.op === "&&"
+			) {
+				return "&&";
+			}
+			return null;
+		})
+		.filter((token): token is string => token !== null);
 }
 
 function splitLeadingEnvAssignments(tokens: string[]): {

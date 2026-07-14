@@ -269,3 +269,20 @@ describe("parseArgs / joinArgs", () => {
 		expect(joinArgs(["--prompt"])).toBe("--prompt");
 	});
 });
+
+describe("&& operator preservation", () => {
+	it("keeps && when parsing and joining a command chain", () => {
+		expect(parseCommandString("clear && claude")).toEqual({
+			command: "clear",
+			args: ["&&", "claude"],
+		});
+		expect(joinCommandArgs("clear", ["&&", "claude"])).toBe("clear && claude");
+	});
+
+	it("still drops non-&& control operators", () => {
+		expect(parseCommandString("cat foo | grep bar")).toEqual({
+			command: "cat",
+			args: ["foo", "grep", "bar"],
+		});
+	});
+});

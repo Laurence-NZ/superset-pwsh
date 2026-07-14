@@ -90,4 +90,11 @@ describe("buildAgentCommandString", () => {
 			"'amp'",
 		);
 	});
+
+	it("emits && as a shell operator, not a quoted arg", () => {
+		const config = { ...argvConfig, command: "clear", args: ["&&", "claude"] };
+		expect(buildAgentCommandString(config, "prompt", [], RANDOM_ID)).toBe(
+			"'clear' && 'claude' 'prompt'",
+		);
+	});
 });
