@@ -23,9 +23,14 @@ export function killProcessTree(
 		return;
 	}
 
-	execFile("taskkill.exe", buildWindowsTaskkillArgs(pid), (error) => {
-		callback(error ?? undefined);
-	});
+	execFile(
+		"taskkill.exe",
+		buildWindowsTaskkillArgs(pid),
+		{ windowsHide: true },
+		(error) => {
+			callback(error ?? undefined);
+		},
+	);
 }
 
 export function treeKillAsync(pid: number, signal: string): Promise<void> {

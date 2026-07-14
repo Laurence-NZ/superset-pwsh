@@ -42,6 +42,7 @@ function findBinaryPathsWindows(name: string): string[] {
 	const result = execFileSync("where.exe", [name], {
 		encoding: "utf-8",
 		stdio: ["pipe", "pipe", "ignore"],
+		windowsHide: true,
 	});
 	return result.trim().split("\r\n").filter(Boolean);
 }

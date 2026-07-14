@@ -18,12 +18,22 @@ target still matches before applying — upstream refactors move things.
 ## Runtime gaps (dev + prod)
 
 - **Console windows flash** (PATCHES 23) — black cmd/powershell windows flash on
-  tab switch or spawn-heavy actions. Fix: add
-  `apps/desktop/src/main/lib/windows-child-process-patch.ts` that monkey-patches
-  `node:child_process` spawn variants to default `windowsHide: true` on Windows,
-  and call `installWindowsChildProcessPatch()` at the top of
-  `apps/desktop/src/main/index.ts`. Branch sets `windowsHide` in a few call
-  sites but not globally.
+  tab switch or spawn-heavy actions. A flash only happens when the *parent* is
+  console-less (Electron main + host-service both launch with `windowsHide:
+  true`); their unhidden console-subsystem children each get a fresh console
+  window. So a plain CLI repro (`node repro.mjs` in a terminal) never shows it —
+  the child inherits the terminal's console. Two confirmed unhidden sites were
+  fixed directly with `{ windowsHide: true }`: `taskkill.exe` in
+  `packages/host-service/src/ports/tree-kill.ts` + the desktop twin
+  `apps/desktop/src/main/lib/tree-kill.ts` (fires on session/agent teardown), and
+  `where.exe` in `apps/desktop/src/main/lib/agent-setup/utils.ts` (`findRealBinary`,
+  fires on agent setup). Ruled out: `pidusage` (resource-metrics poll) — v4's
+  `gwmi` backend already passes `windowsHide: true`. If flashes return from a
+  *third* site, apply the full PATCHES 23 monkey-patch (global default +
+  `SUPERSET_TRACE_SPAWN=1` tracer) to attribute it —
+  `apps/desktop/src/main/lib/windows-child-process-patch.ts` +
+  `installWindowsChildProcessPatch()` at the top of
+  `apps/desktop/src/main/index.ts`.
 
 - **Notification sound silent** (PATCHES 16) — agent-lifecycle notification
   sounds don't play. Target: `apps/desktop/src/main/lib/notification-sound.ts`
