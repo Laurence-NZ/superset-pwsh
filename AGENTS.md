@@ -60,6 +60,8 @@ Cut releases on a dedicated release branch (not `main`); `bun run release deskto
 
 This branch adds native Windows x64 desktop support on top of `main` and periodically merges `main` back in. Those merges bring upstream refactors that need Windows re-adaptation.
 
+- **Local-only branch — never pushed.** A stopgap for running Superset on Windows via `bun run dev:desktop` until upstream ships real native Windows support. No PRs, no remote pushes; commit locally and stop. So commit hygiene is for readability, not review — don't gate work on push-only concerns.
+- **Applied Windows runtime fixes** (adapted from `superset-windows/PATCHES.md`): V2 terminals default to PowerShell 7 (`packages/host-service/src/terminal/user-shell.ts`), `&&` preserved in V2 agent launch commands, and Windows ringtone preview via WPF MediaPlayer. Untested candidate patches for future symptoms: `docs/windows-port-remaining-patches.md`.
 - **Structure a merge as one merge commit + separate follow-up commits** for each Windows adaptation, so the integration and the Windows work review apart.
 - **Run `bun run typecheck` after resolving conflicts.** Upstream frequently changes a shared helper's signature (e.g. `resolveScript`, `writeTempAskpass`) that the Windows layer builds on; git auto-merges the text but the types break with no conflict marker. `bun run lint` must exit 0 too before pushing.
 - **biome `lineEnding` stays `lf`, never `auto`.** On Windows `auto` resolves to CRLF, so biome wants to rewrite every LF file — `bun run lint` fails locally and `lint:fix` would corrupt the whole tree (CI is Linux/LF).
