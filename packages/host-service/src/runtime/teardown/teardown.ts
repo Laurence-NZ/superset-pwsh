@@ -1,6 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 import { TEARDOWN_TIMEOUT_MS } from "@superset/shared/constants";
 import { getKnownShell } from "@superset/shared/shell";
 import type { HostDb } from "../../db";
@@ -10,16 +8,10 @@ import {
 	createTerminalSessionInternal,
 	disposeSession,
 } from "../../terminal/terminal";
+import { resolveScript, shellSingleQuote } from "../setup/config";
 
 export { TEARDOWN_TIMEOUT_MS };
 
-export const TEARDOWN_SCRIPT_REL_PATH = ".superset/teardown.sh";
-export const PORTABLE_TEARDOWN_SCRIPT_REL_PATH = ".superset/teardown.ts";
-export const WINDOWS_TEARDOWN_SCRIPT_REL_PATHS = [
-	".superset/teardown.cmd",
-	".superset/teardown.bat",
-	".superset/teardown.ps1",
-] as const;
 const OUTPUT_TAIL_BYTES = 4096;
 const KILL_GRACE_MS = 2_000;
 
@@ -40,14 +32,25 @@ interface RunTeardownOptions {
 	db: HostDb;
 	workspaceId: string;
 	worktreePath: string;
+	/** Main repo path — source of truth for `.superset/config.json`. */
+	repoPath: string;
+	projectId: string;
 	timeoutMs?: number;
+	/** Override $HOME for tests. Defaults to `os.homedir()`. */
+	homeDir?: string;
 }
 
 /**
- * Runs the workspace teardown script inside the workspace, reusing the same
- * terminal primitive v2 uses for interactive sessions. This gives the
- * script full environment parity with the user's terminals (login shell
- * rcfiles, PATH, nvm/rbenv, etc.), matching how setup runs.
+ * Runs the workspace's teardown, reusing the same terminal primitive v2 uses
+ * for interactive sessions. This gives it full environment parity with the
+ * user's terminals (login shell rcfiles, PATH, nvm/rbenv, etc.), matching how
+ * setup runs.
+ *
+ * The teardown to run is resolved by {@link resolveTeardownCommand}: the
+ * configured `teardown` commands from `.superset/config.json` take precedence,
+ * falling back to a `.superset/teardown.<ext>` script (worktree first, then
+ * main repo; platform-native extension on Windows). Skipped (as a success)
+ * when no source resolves to anything runnable.
  *
  * Silent by design — the PTY session is transient and not surfaced as a
  * visible pane. The renderer only sees the output tail on failure.
@@ -56,24 +59,27 @@ export async function runTeardown({
 	db,
 	workspaceId,
 	worktreePath,
+	repoPath,
+	projectId,
 	timeoutMs = TEARDOWN_TIMEOUT_MS,
+	homeDir,
 }: RunTeardownOptions): Promise<TeardownResult> {
-	const scriptPath = resolveTeardownScriptPath(worktreePath);
-	if (!scriptPath) return { status: "skipped" };
+	const resolved = resolveTeardownCommand({
+		repoPath,
+		projectId,
+		worktreePath,
+		homeDir,
+	});
+	if (resolved === null) return { status: "skipped" };
 
 	const terminalId = randomUUID();
-	const shell = resolveTeardownShell();
-	const initialCommand = buildTeardownInitialCommand(
-		scriptPath,
-		shell,
-		process.platform,
-	);
 
 	const session = await createTerminalSessionInternal({
 		terminalId,
 		workspaceId,
 		db,
-		initialCommand,
+		initialCommand: resolved.initialCommand,
+		...(resolved.cwd && { cwd: resolved.cwd }),
 		listed: false,
 	});
 	if ("error" in session) {
@@ -151,24 +157,51 @@ export async function runTeardown({
 	});
 }
 
-export function resolveTeardownScriptPath(
-	worktreePath: string,
-	platform: NodeJS.Platform = process.platform,
-): string | null {
-	const portableScript = join(worktreePath, PORTABLE_TEARDOWN_SCRIPT_REL_PATH);
-	const shellScript = join(worktreePath, TEARDOWN_SCRIPT_REL_PATH);
-	if (platform === "win32") {
-		if (existsSync(portableScript)) return portableScript;
-		for (const relPath of WINDOWS_TEARDOWN_SCRIPT_REL_PATHS) {
-			const scriptPath = join(worktreePath, relPath);
-			if (existsSync(scriptPath)) return scriptPath;
-		}
-	}
-	if (existsSync(shellScript)) return shellScript;
-	if (existsSync(portableScript)) return portableScript;
-	return null;
+/**
+ * Resolve the teardown command for a workspace, if any. Uses the shared
+ * lifecycle-script posture (see `resolveScript`): configured `teardown`
+ * commands — worktree config overriding the main repo's — then a
+ * `teardown.<ext>` script, worktree first (state generated during the session
+ * must win) and main repo second (gitignored scripts don't exist in
+ * worktrees).
+ *
+ * Returns null when no source resolves to anything runnable, which the
+ * caller treats as a skipped (successful) teardown.
+ *
+ * Exported for tests.
+ */
+export function resolveTeardownCommand(args: {
+	repoPath: string;
+	projectId: string;
+	worktreePath: string;
+	/** Override $HOME for tests. */
+	homeDir?: string;
+	/** Override the platform for tests. Defaults to `process.platform`. */
+	platform?: NodeJS.Platform;
+	/** Override the launch shell for tests. */
+	shell?: string;
+}): { initialCommand: string; cwd?: string } | null {
+	const platform = args.platform ?? process.platform;
+	const resolved = resolveScript("teardown", { ...args, platform });
+	if (!resolved) return null;
+
+	const shell = args.shell ?? resolveTeardownShell();
+	const initialCommand =
+		resolved.kind === "commands"
+			? buildTeardownCommandFromCommands(resolved.commands, shell, platform)
+			: buildTeardownInitialCommand(resolved.scriptPath, shell, platform);
+	return { initialCommand, ...(resolved.cwd && { cwd: resolved.cwd }) };
 }
 
+/**
+ * Build the initial command for a resolved teardown script. The hidden PTY's
+ * exit code is the teardown status, so every branch makes the launch shell
+ * exit with the script's code:
+ *   - POSIX: `exec` replaces the login shell with the script process, avoiding
+ *     shell-specific exit syntax like `$?` (breaks in fish).
+ *   - Windows cmd: `&& exit /b 0 || exit /b 1`.
+ *   - Windows PowerShell/pwsh: `; exit $LASTEXITCODE`.
+ */
 export function buildTeardownInitialCommand(
 	scriptPath: string,
 	shell?: string,
@@ -182,7 +215,7 @@ export function buildTeardownInitialCommand(
 		if (knownShell === "powershell" || knownShell === "pwsh") {
 			return `bun ${powershellSingleQuote(scriptPath)}; exit $LASTEXITCODE`;
 		}
-		return `exec bun ${singleQuote(scriptPath)}`;
+		return `exec bun ${shellSingleQuote(scriptPath)}`;
 	}
 
 	if (platform === "win32") {
@@ -202,15 +235,34 @@ export function buildTeardownInitialCommand(
 		}
 	}
 
-	// `exec` replaces the user's login shell with the teardown process. That
-	// avoids shell-specific exit-status syntax like `$?`, which breaks in fish
-	// and leaves the hidden teardown terminal open until timeout.
-	return `exec bash ${singleQuote(scriptPath)}`;
+	return `exec bash ${shellSingleQuote(scriptPath)}`;
 }
 
-/** POSIX single-quote escape: safe for any byte sequence in a path. */
-function singleQuote(s: string): string {
-	return `'${s.replaceAll("'", "'\\''")}'`;
+/**
+ * Build the initial command for configured `teardown` commands. Same exit-code
+ * posture as {@link buildTeardownInitialCommand}: the launch shell exits with
+ * the teardown status so the hidden PTY settles correctly.
+ *   - POSIX: `exec bash -c` runs the `&&`-chained commands in one shell and
+ *     replaces the login shell so the PTY exits with the teardown status.
+ *   - Windows cmd: `&&`-chain then `&& exit /b 0 || exit /b 1`.
+ *   - Windows PowerShell/pwsh: run each command with a failure guard, exit 0
+ *     at the end (PowerShell 5.1 has no `&&` short-circuit).
+ */
+export function buildTeardownCommandFromCommands(
+	commands: string[],
+	shell?: string,
+	platform: NodeJS.Platform = process.platform,
+): string {
+	if (platform === "win32") {
+		const knownShell = shell ? getKnownShell(shell) : "unknown";
+		if (knownShell === "powershell" || knownShell === "pwsh") {
+			const guard =
+				"if (-not $?) { if ($LASTEXITCODE -is [int] -and $LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; exit 1 }";
+			return `${commands.map((command) => `${command}; ${guard}`).join("; ")}; exit 0`;
+		}
+		return `${commands.join(" && ")} && exit /b 0 || exit /b 1`;
+	}
+	return `exec bash -c ${shellSingleQuote(commands.join(" && "))}`;
 }
 
 function powershellSingleQuote(s: string): string {

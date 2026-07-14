@@ -32,9 +32,9 @@ const MAX_WORK_CHUNK_SIZE = 500;
 const THROTTLE_DELAY_MS = 200;
 const MAX_BUFFERED_EVENTS = 30_000;
 
+// Watches are always recursive — @parcel/watcher offers no shallow mode.
 export interface WatchPathOptions {
 	absolutePath: string;
-	recursive?: boolean;
 }
 
 export interface InternalWatchEvent {
@@ -623,6 +623,14 @@ export class FsWatcherManager {
 
 				if (events.length === 0) {
 					return;
+				}
+
+				if (process.env.SUPERSET_FS_EVENTS_DEBUG === "1") {
+					console.log("[fs:debug] parcel callback", {
+						path: state.absolutePath,
+						count: events.length,
+						kinds: events.map((e) => e.type),
+					});
 				}
 
 				this.normalizeEvents(events, state);

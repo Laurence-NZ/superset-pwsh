@@ -139,16 +139,18 @@ export const gitRouter = router({
 				const raw = await git.raw([
 					"log",
 					`${baseRef}..HEAD`,
-					"--format=%H\t%h\t%s\t%an\t%aI",
+					"--format=%H\t%h\t%s\t%an\t%ae\t%aI",
 				]);
 				for (const line of raw.trim().split("\n")) {
 					if (!line) continue;
-					const [hash, shortHash, message, author, date] = line.split("\t");
+					const [hash, shortHash, message, author, authorEmail, date] =
+						line.split("\t");
 					commits.push({
 						hash: hash ?? "",
 						shortHash: shortHash ?? "",
 						message: message ?? "",
 						author: author ?? "",
+						authorEmail: authorEmail ?? "",
 						date: date ?? "",
 					});
 				}
@@ -570,6 +572,56 @@ export const gitRouter = router({
 				repoOwner: pr.repoOwner,
 				repoName: pr.repoName,
 			};
+		}),
+
+	getCheckJobLogs: queryProcedure
+		.meta({ timeoutMs: 30_000 })
+		.input(z.object({ workspaceId: z.string(), detailsUrl: z.string() }))
+		.query(async ({ ctx, input }) => {
+			const workspace = ctx.db.query.workspaces
+				.findFirst({ where: eq(workspaces.id, input.workspaceId) })
+				.sync();
+			if (!workspace?.pullRequestId) {
+				throw new TRPCError({
+					code: "NOT_FOUND",
+					message: "Workspace has no associated pull request",
+				});
+			}
+
+			const pr = ctx.db.query.pullRequests
+				.findFirst({ where: eq(pullRequests.id, workspace.pullRequestId) })
+				.sync();
+			if (!pr) {
+				throw new TRPCError({
+					code: "INTERNAL_SERVER_ERROR",
+					message: `Pull request ${workspace.pullRequestId} not found in database`,
+				});
+			}
+
+			// GitHub Actions check details URLs look like
+			// https://github.com/<owner>/<repo>/actions/runs/<run_id>/job/<job_id>
+			const isGithubUrl =
+				URL.canParse(input.detailsUrl) &&
+				new URL(input.detailsUrl).hostname === "github.com";
+			const jobId = isGithubUrl
+				? input.detailsUrl.match(/\/job\/(\d+)/)?.[1]
+				: undefined;
+			if (!jobId) {
+				throw new TRPCError({
+					code: "BAD_REQUEST",
+					message: "Check is not a GitHub Actions job with downloadable logs",
+				});
+			}
+
+			const octokit = await ctx.github();
+			const { data } = await octokit.rest.actions.downloadJobLogsForWorkflowRun(
+				{
+					owner: pr.repoOwner,
+					repo: pr.repoName,
+					job_id: Number(jobId),
+				},
+			);
+			return { logs: typeof data === "string" ? data : String(data) };
 		}),
 
 	getPullRequestThreads: queryProcedure

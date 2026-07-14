@@ -1,10 +1,10 @@
 {
 	"extends": "@superset/typescript/next.json",
 	"compilerOptions": {
-		"baseUrl": ".",
 		"paths": {
 			"@/*": ["./src/*"]
-		}
+		},
+		"types": ["node", "bun"]
 	},
 	"include": ["**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
 	"exclude": ["node_modules"]

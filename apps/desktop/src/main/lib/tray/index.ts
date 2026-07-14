@@ -2,20 +2,20 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import {
 	app,
-	dialog,
 	Menu,
 	type MenuItemConstructorOptions,
 	nativeImage,
 	Tray,
 } from "electron";
 import { loadToken } from "lib/trpc/routers/auth/utils/auth-functions";
-import { focusMainWindow, quitApp, quitAppCompletely } from "main/index";
+import { focusMainWindow, quitApp } from "main/index";
 import { getMainApiUrl } from "main/lib/desktop-runtime-flags";
 import {
 	getHostServiceCoordinator,
 	type HostServiceStatusEvent,
 } from "main/lib/host-service-coordinator";
 import { menuEmitter } from "main/lib/menu-events";
+import { confirmAndQuitCompletely } from "main/lib/quit-completely";
 import { PLATFORM } from "shared/constants";
 
 /** Must have "Template" suffix for macOS dark/light mode support */
@@ -124,26 +124,6 @@ function setLaunchAtLogin(openAtLogin: boolean): void {
 function openSettings(): void {
 	focusMainWindow();
 	menuEmitter.emit("open-settings");
-}
-
-async function confirmAndQuitCompletely(): Promise<void> {
-	try {
-		const { response } = await dialog.showMessageBox({
-			type: "warning",
-			buttons: ["Quit Completely", "Cancel"],
-			defaultId: 1,
-			cancelId: 1,
-			title: "Quit Superset Completely",
-			message: "Quit Superset and stop all background services?",
-			detail:
-				"All open terminal sessions will be killed and any running host-services will be stopped. Use “Close Superset” instead if you want services to keep running for the next launch.",
-		});
-		if (response === 0) {
-			quitAppCompletely();
-		}
-	} catch (error) {
-		console.error("[Tray] Quit-completely confirmation failed:", error);
-	}
 }
 
 interface HostInfo {

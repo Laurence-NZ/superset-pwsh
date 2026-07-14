@@ -9,6 +9,7 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { projects, workspaces } from "../../../db/schema";
 import { createUserSimpleGit } from "../../../runtime/git/simple-git";
+import { deleteLocalWorkspace } from "../../../workspaces/local-workspace-store";
 import { protectedProcedure, router } from "../../index";
 import { normalizeWorktreeBaseDir } from "../workspace-creation/shared/worktree-paths";
 import {
@@ -531,6 +532,7 @@ export const projectRouter = router({
 					const resolved = await cloneRepoInto(
 						cloudProject.repoCloneUrl,
 						input.mode.parentDir,
+						ctx.credentials,
 					);
 					persistLocalProject(ctx, input.projectId, resolved);
 					const mainWorkspace = await ensureMainWorkspace(
@@ -665,10 +667,13 @@ export const projectRouter = router({
 			}
 
 			try {
-				ctx.db
-					.delete(workspaces)
-					.where(eq(workspaces.projectId, input.projectId))
-					.run();
+				// Per-row so each deletion broadcasts; the cloud project delete
+				// above already cascaded the cloud rows, so no tombstones.
+				for (const ws of localWorkspaces) {
+					deleteLocalWorkspace({ db: ctx.db, eventBus: ctx.eventBus }, ws.id, {
+						queueCloudDelete: false,
+					});
+				}
 				ctx.db.delete(projects).where(eq(projects.id, input.projectId)).run();
 			} catch (err) {
 				console.warn("[project.remove] failed to delete local rows", {

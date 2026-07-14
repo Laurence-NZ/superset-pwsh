@@ -1,25 +1,15 @@
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 import { getKnownShell } from "@superset/shared/shell";
 import { eq } from "drizzle-orm";
 import { projects, workspaces } from "../../../../db/schema";
 import {
-	getResolvedSetupCommands,
-	loadSetupConfig,
+	resolveScript,
+	shellSingleQuote,
 } from "../../../../runtime/setup/config";
 import { getTerminalBaseEnv } from "../../../../terminal/env";
 import { resolveLaunchShell } from "../../../../terminal/shell-launch";
 import { createTerminalSessionInternal } from "../../../../terminal/terminal";
 import type { HostServiceContext } from "../../../../types";
 import type { TerminalDescriptor } from "./types";
-
-const POSIX_SETUP_SCRIPT_REL_PATH = ".superset/setup.sh";
-const PORTABLE_SETUP_SCRIPT_REL_PATH = ".superset/setup.ts";
-const WINDOWS_SETUP_SCRIPT_REL_PATHS = [
-	".superset/setup.cmd",
-	".superset/setup.bat",
-	".superset/setup.ps1",
-] as const;
 
 interface StartSetupTerminalArgs {
 	ctx: HostServiceContext;
@@ -34,18 +24,15 @@ interface StartSetupTerminalResult {
 /**
  * Resolve and start the workspace-creation setup terminal, if any.
  *
- * Source order:
- *   1. Configured `setup` array from `.superset/config.json` (+ user override
- *      and `config.local.json` overlay) — chained for the launch shell so
- *      failures short-circuit.
- *   2. Fallback: platform-native `.superset/setup.ts`, `.cmd`, `.bat`, or
- *      `.ps1` on Windows, otherwise `bash <repoPath>/.superset/setup.sh`
- *      against the main repo (NOT the worktree — worktrees skip gitignored
- *      files, the main repo is authoritative). Scripts that need the canonical
- *      `.superset/` dir read `$SUPERSET_ROOT_PATH`, injected by the v2 terminal
- *      env builder.
+ * Source order is the shared lifecycle-script posture (see `resolveScript`):
+ * configured `setup` commands (chained for the launch shell so failures
+ * short-circuit; worktree config overrides the main repo's), then a
+ * `.superset/setup.<ext>` script (worktree first, then main repo;
+ * platform-native extension on Windows). Scripts that need the canonical
+ * `.superset/` dir read `$SUPERSET_ROOT_PATH`, injected by the v2 terminal env
+ * builder. Configured `cwd` is honored via the terminal session.
  *
- * No-op when neither source resolves to anything runnable.
+ * No-op when no source resolves to anything runnable.
  */
 export async function startSetupTerminalIfPresent(
 	args: StartSetupTerminalArgs,
@@ -65,12 +52,13 @@ export async function startSetupTerminalIfPresent(
 		return { terminal: null, warning: null };
 	}
 
-	const initialCommand = resolveInitialCommand({
+	const resolved = resolveInitialCommand({
 		repoPath: row.repoPath,
 		projectId: row.projectId,
+		worktreePath: row.worktreePath,
 		shell: resolveSetupShell(),
 	});
-	if (!initialCommand) {
+	if (!resolved) {
 		return { terminal: null, warning: null };
 	}
 
@@ -80,7 +68,8 @@ export async function startSetupTerminalIfPresent(
 		workspaceId: args.workspaceId,
 		db: args.ctx.db,
 		eventBus: args.ctx.eventBus,
-		initialCommand,
+		initialCommand: resolved.initialCommand,
+		...(resolved.cwd && { cwd: resolved.cwd }),
 	});
 	if ("error" in result) {
 		return {
@@ -103,40 +92,30 @@ export async function startSetupTerminalIfPresent(
 export function resolveInitialCommand(args: {
 	repoPath: string;
 	projectId: string;
+	worktreePath?: string;
 	/** Override $HOME for tests. */
 	homeDir?: string;
+	/** Override the platform for tests. Defaults to `process.platform`. */
 	platform?: NodeJS.Platform;
+	/** Override the launch shell for tests. */
 	shell?: string;
-}): string | null {
+}): { initialCommand: string; cwd?: string } | null {
 	const platform = args.platform ?? process.platform;
-	const config = loadSetupConfig(args);
-	const commands = getResolvedSetupCommands(config);
-	if (commands.length > 0) {
-		return buildSetupCommand(commands, args.shell, platform);
-	}
+	const resolved = resolveScript("setup", { ...args, platform });
+	if (!resolved) return null;
 
-	if (platform === "win32") {
-		const fallbackScript = resolveWindowsSetupFallbackScript(args.repoPath);
-		if (!fallbackScript) return null;
-		return buildWindowsSetupFallbackCommand(fallbackScript);
-	}
-
-	const portableFallbackScript = join(
-		args.repoPath,
-		PORTABLE_SETUP_SCRIPT_REL_PATH,
-	);
-	const fallbackScript = join(args.repoPath, POSIX_SETUP_SCRIPT_REL_PATH);
-	if (existsSync(fallbackScript)) {
-		return `bash ${singleQuote(fallbackScript)}`;
-	}
-
-	if (existsSync(portableFallbackScript)) {
-		return `bun ${singleQuote(portableFallbackScript)}`;
-	}
-
-	return null;
+	const initialCommand =
+		resolved.kind === "commands"
+			? buildSetupCommand(resolved.commands, args.shell, platform)
+			: buildSetupScriptCommand(resolved.scriptPath, platform);
+	return { initialCommand, ...(resolved.cwd && { cwd: resolved.cwd }) };
 }
 
+/**
+ * Chain configured setup commands for the launch shell so a failing command
+ * short-circuits the rest. POSIX/cmd use `&&`; Windows PowerShell has no `&&`
+ * short-circuit (5.1), so each command gets an explicit failure guard.
+ */
 export function buildSetupCommand(
 	commands: string[],
 	shell?: string,
@@ -155,38 +134,31 @@ export function buildSetupCommand(
 	return commands.join(" && ");
 }
 
-export function resolveWindowsSetupFallbackScript(
-	repoPath: string,
-): string | null {
-	const portableScript = join(repoPath, PORTABLE_SETUP_SCRIPT_REL_PATH);
-	if (existsSync(portableScript)) return portableScript;
-
-	for (const relPath of WINDOWS_SETUP_SCRIPT_REL_PATHS) {
-		const scriptPath = join(repoPath, relPath);
-		if (existsSync(scriptPath)) return scriptPath;
+/**
+ * Invoke a resolved setup script per its extension: `.ts` via `bun`, Windows
+ * `.cmd`/`.bat` directly, `.ps1` via `powershell.exe`, everything else via
+ * `bash`. Unlike teardown, the setup terminal is a visible pane, so no
+ * exit-code propagation is needed.
+ */
+export function buildSetupScriptCommand(
+	scriptPath: string,
+	platform: NodeJS.Platform = process.platform,
+): string {
+	const lower = scriptPath.toLowerCase();
+	if (lower.endsWith(".ts")) {
+		return platform === "win32"
+			? `bun ${doubleQuote(scriptPath)}`
+			: `bun ${shellSingleQuote(scriptPath)}`;
 	}
-
-	return null;
-}
-
-export function buildWindowsSetupFallbackCommand(scriptPath: string): string {
-	const lowerScriptPath = scriptPath.toLowerCase();
-	if (lowerScriptPath.endsWith(".ts")) {
-		return `bun ${doubleQuote(scriptPath)}`;
+	if (platform === "win32") {
+		if (lower.endsWith(".cmd") || lower.endsWith(".bat")) {
+			return doubleQuote(scriptPath);
+		}
+		if (lower.endsWith(".ps1")) {
+			return `powershell.exe -NoProfile -ExecutionPolicy Bypass -File ${doubleQuote(scriptPath)}`;
+		}
 	}
-	if (lowerScriptPath.endsWith(".cmd") || lowerScriptPath.endsWith(".bat")) {
-		return doubleQuote(scriptPath);
-	}
-	if (lowerScriptPath.endsWith(".ps1")) {
-		return `powershell.exe -NoProfile -ExecutionPolicy Bypass -File ${doubleQuote(scriptPath)}`;
-	}
-
-	return doubleQuote(scriptPath);
-}
-
-/** POSIX single-quote escape: safe for any path passed through a shell. */
-function singleQuote(value: string): string {
-	return `'${value.replaceAll("'", "'\\''")}'`;
+	return `bash ${shellSingleQuote(scriptPath)}`;
 }
 
 function doubleQuote(value: string): string {

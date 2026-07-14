@@ -32,6 +32,7 @@ function ensureValidShape(data: Partial<AppState>): AppState {
 			},
 		},
 		desktopRuntimeFlags: normalizeDesktopRuntimeFlags(data.desktopRuntimeFlags),
+		lastRunVersion: data.lastRunVersion,
 	};
 }
 

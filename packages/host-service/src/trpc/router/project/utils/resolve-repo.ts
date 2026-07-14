@@ -2,12 +2,22 @@ import { existsSync, mkdirSync, rmSync, statSync } from "node:fs";
 import { join, resolve as resolvePath } from "node:path";
 import { parseGitHubRemote } from "@superset/shared/github-remote";
 import { TRPCError } from "@trpc/server";
+import type { GitCredentialProvider } from "../../../../runtime/git";
 import { createUserSimpleGit } from "../../../../runtime/git/simple-git";
 import {
 	findMatchingRemote,
 	getGitHubRemotes,
 	type ParsedGitHubRemote,
 } from "./git-remote";
+
+async function cloneEnv(
+	credentials: GitCredentialProvider | undefined,
+	remoteUrl: string,
+): Promise<Record<string, string> | undefined> {
+	if (!credentials) return undefined;
+	const { env } = await credentials.getCredentials(remoteUrl);
+	return env;
+}
 
 export interface ResolvedRepo {
 	repoPath: string;
@@ -31,6 +41,36 @@ export function validateDirectoryPath(path: string, label: string): void {
 		throw new TRPCError({
 			code: "BAD_REQUEST",
 			message: `${label} is not a directory: ${path}`,
+		});
+	}
+}
+
+/**
+ * Ensure the parent directory we're about to create a project under exists,
+ * creating it (and any missing ancestors) when it doesn't. Unlike
+ * `validateDirectoryPath`, a missing parent is a recoverable condition: the
+ * default project location (e.g. `~/.superset/projects`) won't exist on a
+ * fresh machine, and the user shouldn't have to pre-create it before their
+ * first clone. Still rejects when the path exists but is a file.
+ */
+function ensureParentDirectory(path: string): void {
+	if (existsSync(path)) {
+		if (!statSync(path).isDirectory()) {
+			throw new TRPCError({
+				code: "BAD_REQUEST",
+				message: `Parent directory is not a directory: ${path}`,
+			});
+		}
+		return;
+	}
+	try {
+		mkdirSync(path, { recursive: true });
+	} catch (err) {
+		throw new TRPCError({
+			code: "BAD_REQUEST",
+			message: `Could not create parent directory: ${path}: ${
+				err instanceof Error ? err.message : String(err)
+			}`,
 		});
 	}
 }
@@ -236,7 +276,7 @@ export async function initEmptyRepo(
 	}
 
 	const resolvedParentDir = resolvePath(parentDir);
-	validateDirectoryPath(resolvedParentDir, "Parent directory");
+	ensureParentDirectory(resolvedParentDir);
 	const targetPath = join(resolvedParentDir, dirName);
 	claimEmptyTargetDir(targetPath);
 
@@ -269,6 +309,7 @@ export async function cloneTemplateInto(
 	templateUrl: string,
 	parentDir: string,
 	dirName: string,
+	credentials?: GitCredentialProvider,
 ): Promise<ResolvedRepo> {
 	if (!dirName.trim() || /[/\\]/.test(dirName)) {
 		throw new TRPCError({
@@ -278,13 +319,17 @@ export async function cloneTemplateInto(
 	}
 
 	const resolvedParentDir = resolvePath(parentDir);
-	validateDirectoryPath(resolvedParentDir, "Parent directory");
+	ensureParentDirectory(resolvedParentDir);
 	const targetPath = join(resolvedParentDir, dirName);
 	claimEmptyTargetDir(targetPath);
 
 	try {
 		// --depth=1 since we're throwing away the template's history anyway.
-		await createUserSimpleGit().clone(templateUrl, targetPath, ["--depth=1"]);
+		const env = await cloneEnv(credentials, templateUrl);
+		const cloneGit = createUserSimpleGit();
+		await (env ? cloneGit.env(env) : cloneGit).clone(templateUrl, targetPath, [
+			"--depth=1",
+		]);
 		rmSync(join(targetPath, ".git"), { recursive: true, force: true });
 
 		await gitInitMainBranch(targetPath);
@@ -328,6 +373,7 @@ function deriveCloneDirectoryName(repoCloneUrl: string): string {
 export async function cloneRepoInto(
 	repoCloneUrl: string,
 	parentDir: string,
+	credentials?: GitCredentialProvider,
 ): Promise<ResolvedRepo> {
 	const parsedUrl = parseGitHubRemote(repoCloneUrl);
 	const expectedSlug = parsedUrl
@@ -336,13 +382,15 @@ export async function cloneRepoInto(
 	const repoName = parsedUrl?.name ?? deriveCloneDirectoryName(repoCloneUrl);
 
 	const resolvedParentDir = resolvePath(parentDir);
-	validateDirectoryPath(resolvedParentDir, "Parent directory");
+	ensureParentDirectory(resolvedParentDir);
 
 	const targetPath = join(resolvedParentDir, repoName);
 	claimEmptyTargetDir(targetPath);
 
 	try {
-		await createUserSimpleGit().clone(repoCloneUrl, targetPath);
+		const env = await cloneEnv(credentials, repoCloneUrl);
+		const git = createUserSimpleGit();
+		await (env ? git.env(env) : git).clone(repoCloneUrl, targetPath);
 	} catch (err) {
 		rmSync(targetPath, { recursive: true, force: true });
 		throw new TRPCError({

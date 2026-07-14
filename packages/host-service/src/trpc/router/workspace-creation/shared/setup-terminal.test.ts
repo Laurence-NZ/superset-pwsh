@@ -4,9 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
 	buildSetupCommand,
-	buildWindowsSetupFallbackCommand,
+	buildSetupScriptCommand,
 	resolveInitialCommand,
-	resolveWindowsSetupFallbackScript,
 } from "./setup-terminal";
 
 const PROJECT_ID = "11111111-1111-1111-1111-111111111111";
@@ -87,7 +86,9 @@ describe("resolveInitialCommand", () => {
 		writeConfig(sandbox.repoPath, {
 			setup: ["bun install", "bun run db:migrate"],
 		});
-		expect(resolve()).toBe("bun install && bun run db:migrate");
+		expect(resolve()).toEqual({
+			initialCommand: "bun install && bun run db:migrate",
+		});
 	});
 
 	it("builds PowerShell-compatible setup command chains on Windows", () => {
@@ -114,7 +115,7 @@ describe("resolveInitialCommand", () => {
 			homeDir: sandbox.homeDir,
 			platform: "win32",
 			shell: "powershell.exe",
-		});
+		})?.initialCommand;
 
 		expect(command).toContain("bun install; if (-not $?)");
 		expect(command).toContain("bun run db:migrate; if (-not $?)");
@@ -123,106 +124,116 @@ describe("resolveInitialCommand", () => {
 
 	it("returns the single command when setup has only one line", () => {
 		writeConfig(sandbox.repoPath, { setup: ["bun install"] });
-		expect(resolve()).toBe("bun install");
+		expect(resolve()).toEqual({ initialCommand: "bun install" });
 	});
 
 	it("falls back to bash <repoPath>/.superset/setup.sh when config is empty", () => {
 		writeConfig(sandbox.repoPath, { setup: [], teardown: [] });
 		writeFallbackScript(sandbox.repoPath);
 
-		const cmd = resolve();
-		expect(cmd).toBe(
-			`bash '${join(sandbox.repoPath, ".superset", "setup.sh")}'`,
-		);
+		expect(resolve()).toEqual({
+			initialCommand: `bash '${join(sandbox.repoPath, ".superset", "setup.sh")}'`,
+		});
 	});
 
 	it("falls back to setup.sh when no config.json exists at all", () => {
 		writeFallbackScript(sandbox.repoPath);
-		const cmd = resolve();
-		expect(cmd).toBe(
-			`bash '${join(sandbox.repoPath, ".superset", "setup.sh")}'`,
-		);
+		expect(resolve()).toEqual({
+			initialCommand: `bash '${join(sandbox.repoPath, ".superset", "setup.sh")}'`,
+		});
 	});
 
 	it("prefers the portable setup.ts fallback on Windows", () => {
 		writeFallbackScript(sandbox.repoPath);
 		writePortableFallbackScript(sandbox.repoPath);
 
-		const cmd = resolveInitialCommand({
-			repoPath: sandbox.repoPath,
-			projectId: PROJECT_ID,
-			homeDir: sandbox.homeDir,
-			platform: "win32",
+		expect(
+			resolveInitialCommand({
+				repoPath: sandbox.repoPath,
+				projectId: PROJECT_ID,
+				homeDir: sandbox.homeDir,
+				platform: "win32",
+			}),
+		).toEqual({
+			initialCommand: `bun "${join(sandbox.repoPath, ".superset", "setup.ts")}"`,
 		});
-
-		expect(cmd).toBe(
-			`bun "${join(sandbox.repoPath, ".superset", "setup.ts")}"`,
-		);
 	});
 
 	it("uses Windows-native setup fallback scripts when setup.ts is absent", () => {
 		writeWindowsFallbackScript(sandbox.repoPath, "setup.ps1");
 		writeWindowsFallbackScript(sandbox.repoPath, "setup.cmd");
 
-		const cmd = resolveInitialCommand({
-			repoPath: sandbox.repoPath,
-			projectId: PROJECT_ID,
-			homeDir: sandbox.homeDir,
-			platform: "win32",
+		expect(
+			resolveInitialCommand({
+				repoPath: sandbox.repoPath,
+				projectId: PROJECT_ID,
+				homeDir: sandbox.homeDir,
+				platform: "win32",
+			}),
+		).toEqual({
+			initialCommand: `"${join(sandbox.repoPath, ".superset", "setup.cmd")}"`,
 		});
-
-		expect(cmd).toBe(`"${join(sandbox.repoPath, ".superset", "setup.cmd")}"`);
-		expect(resolveWindowsSetupFallbackScript(sandbox.repoPath)).toBe(
-			join(sandbox.repoPath, ".superset", "setup.cmd"),
-		);
 	});
 
 	it("builds Windows setup fallback commands for native script types", () => {
 		expect(
-			buildWindowsSetupFallbackCommand("C:\\work tree\\.superset\\setup.ts"),
+			buildSetupScriptCommand("C:\\work tree\\.superset\\setup.ts", "win32"),
 		).toBe('bun "C:\\work tree\\.superset\\setup.ts"');
 		expect(
-			buildWindowsSetupFallbackCommand("C:\\work tree\\.superset\\setup.bat"),
+			buildSetupScriptCommand("C:\\work tree\\.superset\\setup.bat", "win32"),
 		).toBe('"C:\\work tree\\.superset\\setup.bat"');
 		expect(
-			buildWindowsSetupFallbackCommand("C:\\work tree\\.superset\\setup.ps1"),
+			buildSetupScriptCommand("C:\\work tree\\.superset\\setup.ps1", "win32"),
 		).toBe(
 			'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\\work tree\\.superset\\setup.ps1"',
 		);
 	});
 
-	it("does not invoke a Bash-only setup fallback on Windows", () => {
+	// A lone setup.sh on Windows now runs via bash (the app ships Git Bash
+	// handling), matching teardown resolution. `.sh` is the lowest-priority
+	// Windows extension, so a portable/native script still wins.
+	it("falls back to bash for a lone setup.sh on Windows", () => {
 		writeFallbackScript(sandbox.repoPath);
 
-		const cmd = resolveInitialCommand({
-			repoPath: sandbox.repoPath,
-			projectId: PROJECT_ID,
-			homeDir: sandbox.homeDir,
-			platform: "win32",
+		expect(
+			resolveInitialCommand({
+				repoPath: sandbox.repoPath,
+				projectId: PROJECT_ID,
+				homeDir: sandbox.homeDir,
+				platform: "win32",
+			}),
+		).toEqual({
+			initialCommand: `bash '${join(sandbox.repoPath, ".superset", "setup.sh")}'`,
 		});
-
-		expect(cmd).toBeNull();
 	});
 
 	it("uses setup.ts as a POSIX fallback when setup.sh is absent", () => {
 		writePortableFallbackScript(sandbox.repoPath);
 
-		const cmd = resolveInitialCommand({
-			repoPath: sandbox.repoPath,
-			projectId: PROJECT_ID,
-			homeDir: sandbox.homeDir,
-			platform: "linux",
+		expect(
+			resolveInitialCommand({
+				repoPath: sandbox.repoPath,
+				projectId: PROJECT_ID,
+				homeDir: sandbox.homeDir,
+				platform: "linux",
+			}),
+		).toEqual({
+			initialCommand: `bun '${join(sandbox.repoPath, ".superset", "setup.ts")}'`,
 		});
-
-		expect(cmd).toBe(
-			`bun '${join(sandbox.repoPath, ".superset", "setup.ts")}'`,
-		);
 	});
 
 	it("config setup wins over the fallback script", () => {
 		writeConfig(sandbox.repoPath, { setup: ["bun install"] });
 		writeFallbackScript(sandbox.repoPath);
-		expect(resolve()).toBe("bun install");
+		expect(resolve()).toEqual({ initialCommand: "bun install" });
+	});
+
+	it("carries config cwd for the terminal session", () => {
+		writeConfig(sandbox.repoPath, { setup: ["bun install"], cwd: "apps/web" });
+		expect(resolve()).toEqual({
+			initialCommand: "bun install",
+			cwd: "apps/web",
+		});
 	});
 
 	it("ignores teardown when resolving the setup command", () => {
@@ -237,7 +248,7 @@ describe("resolveInitialCommand", () => {
 		writeConfig(sandbox.repoPath, {
 			setup: ["", "   ", "bun install", "\n"],
 		});
-		expect(resolve()).toBe("bun install");
+		expect(resolve()).toEqual({ initialCommand: "bun install" });
 	});
 
 	it("escapes single quotes in fallback path", () => {
@@ -250,7 +261,7 @@ describe("resolveInitialCommand", () => {
 				projectId: PROJECT_ID,
 				homeDir: sandboxWithQuote.homeDir,
 				platform: "linux",
-			});
+			})?.initialCommand;
 			expect(cmd).toContain("'\\''");
 			// Verify the escape sequence wraps the single quote correctly.
 			expect(cmd).toBe(
@@ -261,12 +272,36 @@ describe("resolveInitialCommand", () => {
 		}
 	});
 
-	it("does not consult worktree-level config (uses main repoPath)", () => {
+	it("worktree config wins over the main repo's when in scope", () => {
 		writeConfig(sandbox.repoPath, { setup: ["from-main"] });
-		// A sibling worktree directory with its own config should be ignored.
-		const sibling = join(sandbox.repoPath, "..", "sibling-worktree");
-		writeConfig(sibling, { setup: ["from-worktree"] });
+		const worktreePath = join(sandbox.repoPath, "..", "feature-worktree");
+		writeConfig(worktreePath, { setup: ["from-worktree"] });
 
-		expect(resolve()).toBe("from-main");
+		expect(
+			resolveInitialCommand({
+				repoPath: sandbox.repoPath,
+				projectId: PROJECT_ID,
+				worktreePath,
+				homeDir: sandbox.homeDir,
+			}),
+		).toEqual({ initialCommand: "from-worktree" });
+	});
+
+	it("falls back to the worktree setup.sh before the main repo's", () => {
+		writeFallbackScript(sandbox.repoPath);
+		const worktreePath = join(sandbox.repoPath, "..", "feature-worktree");
+		writeFallbackScript(worktreePath);
+
+		expect(
+			resolveInitialCommand({
+				repoPath: sandbox.repoPath,
+				projectId: PROJECT_ID,
+				worktreePath,
+				homeDir: sandbox.homeDir,
+				platform: "linux",
+			}),
+		).toEqual({
+			initialCommand: `bash '${join(worktreePath, ".superset", "setup.sh")}'`,
+		});
 	});
 });

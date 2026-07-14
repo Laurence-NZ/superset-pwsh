@@ -5,7 +5,9 @@ import {
 	buildNotifyHookCommand,
 	buildWrapperScript,
 	createWrapper,
+	getManagedNotifyHookCommand,
 	isSupersetManagedHookCommand,
+	MANAGED_NOTIFY_RELATIVE_PATH,
 	writeFileIfChanged,
 } from "./agent-wrappers-common";
 import {
@@ -70,8 +72,7 @@ interface ClaudeSettingsJson {
 	[key: string]: unknown;
 }
 
-const CLAUDE_DYNAMIC_NOTIFY_RELATIVE_PATH = `hooks/${NOTIFY_SCRIPT_NAME}`;
-const CLAUDE_DYNAMIC_NOTIFY_PATH_MARKER = `$SUPERSET_HOME_DIR/${CLAUDE_DYNAMIC_NOTIFY_RELATIVE_PATH}`;
+const CLAUDE_DYNAMIC_NOTIFY_PATH_MARKER = `$SUPERSET_HOME_DIR/${MANAGED_NOTIFY_RELATIVE_PATH}`;
 const CLAUDE_DYNAMIC_NOTIFY_WINDOWS_PATH_MARKER = `%SUPERSET_HOME_DIR%\\hooks\\${WINDOWS_NOTIFY_SCRIPT_NAME}`;
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -79,21 +80,14 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * Returns the shell command written into Claude's global hook config.
- * The notify path is resolved at runtime from SUPERSET_HOME_DIR so one
- * shared ~/.claude/settings.json works for both dev and prod installs.
- *
- * `SUPERSET_AGENT_ID=claude` is inlined so the v2 hook payload carries the
- * wrapper-level identity even when Claude is launched outside the Superset
- * wrapper (system PATH resolves to the real binary directly).
+ * Shell command written into Claude's global hook config. Delegates to the
+ * shared managed-notify builder, which is platform-aware (POSIX shell vs
+ * Windows `cmd.exe`).
  */
 export function getClaudeManagedHookCommand(
 	platform: NodeJS.Platform = process.platform,
 ): string {
-	if (platform === "win32") {
-		return `cmd.exe /d /s /c 'if defined SUPERSET_HOME_DIR if exist "%SUPERSET_HOME_DIR%\\hooks\\${WINDOWS_NOTIFY_SCRIPT_NAME}" (set "SUPERSET_AGENT_ID=claude" && "%SUPERSET_HOME_DIR%\\hooks\\${WINDOWS_NOTIFY_SCRIPT_NAME}")'`;
-	}
-	return `[ -n "$SUPERSET_HOME_DIR" ] && [ -x "$SUPERSET_HOME_DIR/${CLAUDE_DYNAMIC_NOTIFY_RELATIVE_PATH}" ] && SUPERSET_AGENT_ID=claude "$SUPERSET_HOME_DIR/${CLAUDE_DYNAMIC_NOTIFY_RELATIVE_PATH}" || true`;
+	return getManagedNotifyHookCommand("claude", platform);
 }
 
 function isManagedClaudeHookCommand(

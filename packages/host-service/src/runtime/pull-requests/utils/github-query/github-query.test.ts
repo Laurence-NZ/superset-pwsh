@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
+	fetchOpenPullRequestsFromGh,
 	fetchPullRequestByHeadFromGh,
 	fetchPullRequestChecksFromGh,
+	fetchPullRequestMergeQueueStateFromGh,
 	fetchPullRequestReviewDecisionFromGh,
 } from "./github-query";
 
@@ -152,6 +154,102 @@ describe("GitHub pull request REST queries", () => {
 		expect(result?.headRepository?.name).toBe("fork-repo");
 	});
 
+	// The per-head candidate filter is exact on the branch: it must NOT match a
+	// case-variant head, so distinct case-variant branches never cross-match
+	// here. Case drift is recovered by the runtime's open-PR sweep instead.
+	test("does not match a case-variant branch in per-head filtering", async () => {
+		const { execGh } = createExecGh([
+			[
+				{
+					number: 43,
+					title: "Case drift",
+					html_url: "https://github.com/superset-sh/superset/pull/43",
+					state: "open",
+					draft: false,
+					merged_at: null,
+					updated_at: "2026-05-08T12:00:00Z",
+					head: {
+						ref: "Roshvan/fix-thing",
+						sha: "abc123",
+						repo: {
+							name: "superset",
+							owner: { login: "superset-sh" },
+						},
+					},
+					base: {
+						repo: {
+							full_name: "superset-sh/superset",
+						},
+					},
+				},
+			],
+		]);
+
+		const result = await fetchPullRequestByHeadFromGh(
+			execGh,
+			{ owner: "superset-sh", name: "superset" },
+			{ owner: "superset-sh", repo: "superset", branch: "roshvan/fix-thing" },
+		);
+
+		expect(result).toBeNull();
+	});
+
+	test("sweeps open PRs sorted by most recently updated", async () => {
+		const { calls, execGh } = createExecGh([
+			[
+				{
+					number: 44,
+					title: "Open sweep",
+					html_url: "https://github.com/superset-sh/superset/pull/44",
+					state: "open",
+					draft: false,
+					merged_at: null,
+					updated_at: "2026-05-08T12:00:00Z",
+					head: {
+						ref: "Roshvan/fix-thing",
+						sha: "def456",
+						repo: {
+							name: "superset",
+							owner: { login: "superset-sh" },
+						},
+					},
+					base: {
+						repo: {
+							full_name: "superset-sh/superset",
+						},
+					},
+				},
+				{ number: "not-a-pr" },
+			],
+		]);
+
+		const result = await fetchOpenPullRequestsFromGh(execGh, {
+			owner: "superset-sh",
+			name: "superset",
+		});
+
+		expect(result).toHaveLength(1);
+		expect(result[0]?.number).toBe(44);
+		expect(calls).toEqual([
+			{
+				args: [
+					"api",
+					"--method",
+					"GET",
+					"repos/superset-sh/superset/pulls",
+					"-f",
+					"state=open",
+					"-f",
+					"sort=updated",
+					"-f",
+					"direction=desc",
+					"-f",
+					"per_page=100",
+				],
+			},
+		]);
+	});
+
 	test("derives review decision from latest REST reviews by author", async () => {
 		const { calls, execGh } = createExecGh([
 			[
@@ -274,5 +372,53 @@ describe("GitHub pull request REST queries", () => {
 				],
 			},
 		]);
+	});
+
+	test("detects a PR sitting in the merge queue via GraphQL", async () => {
+		const { calls, execGh } = createExecGh([
+			{
+				data: {
+					repository: { pullRequest: { mergeQueueEntry: { id: "MQE_1" } } },
+				},
+			},
+		]);
+
+		const result = await fetchPullRequestMergeQueueStateFromGh(
+			execGh,
+			{ owner: "superset-sh", name: "superset" },
+			42,
+		);
+
+		expect(result).toBe(true);
+		expect(calls).toEqual([
+			{
+				args: [
+					"api",
+					"graphql",
+					"-f",
+					"query=query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){mergeQueueEntry{id}}}}",
+					"-f",
+					"owner=superset-sh",
+					"-f",
+					"name=superset",
+					"-F",
+					"number=42",
+				],
+			},
+		]);
+	});
+
+	test("reports not-queued when mergeQueueEntry is null", async () => {
+		const { execGh } = createExecGh([
+			{ data: { repository: { pullRequest: { mergeQueueEntry: null } } } },
+		]);
+
+		const result = await fetchPullRequestMergeQueueStateFromGh(
+			execGh,
+			{ owner: "superset-sh", name: "superset" },
+			42,
+		);
+
+		expect(result).toBe(false);
 	});
 });

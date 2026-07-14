@@ -30,6 +30,8 @@ export interface AppState {
 	themeState: ThemeState;
 	hotkeysState: LegacyHotkeysState;
 	desktopRuntimeFlags: DesktopRuntimeFlags;
+	/** App version at last launch; a mismatch means an update was just installed */
+	lastRunVersion?: string;
 }
 
 export const defaultAppState: AppState = {

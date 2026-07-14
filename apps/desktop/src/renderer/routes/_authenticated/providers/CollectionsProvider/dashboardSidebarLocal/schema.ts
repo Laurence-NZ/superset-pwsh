@@ -1,5 +1,5 @@
 import type { AppRouter } from "@superset/host-service";
-import type { WorkspaceState } from "@superset/panes";
+import type { LayoutNode, Tab, WorkspaceState } from "@superset/panes";
 import type { inferRouterInputs } from "@trpc/server";
 import { z } from "zod";
 
@@ -16,6 +16,73 @@ export const dashboardSidebarProjectSchema = z.object({
 });
 
 const paneWorkspaceStateSchema = z.custom<WorkspaceState<unknown>>();
+
+// Structural validators for the persisted pane layout. `paneWorkspaceStateSchema`
+// above is a permissive passthrough for writes (the store always produces a
+// valid shape); these run on READ via `sanitizePaneLayout` so a malformed or
+// legacy-shaped layout (e.g. the pre-binary-tree `{ panes, focusedPaneId }`
+// shape) is healed instead of feeding an undefined node to the renderer.
+const layoutNodeSchema: z.ZodType<LayoutNode> = z.lazy(() =>
+	z.discriminatedUnion("type", [
+		z.object({ type: z.literal("pane"), paneId: z.string() }),
+		z.object({
+			type: z.literal("split"),
+			direction: z.enum(["horizontal", "vertical"]),
+			first: layoutNodeSchema,
+			second: layoutNodeSchema,
+			splitPercentage: z.number().optional(),
+		}),
+	]),
+);
+
+const paneNodeSchema = z.object({
+	id: z.string(),
+	kind: z.string(),
+	titleOverride: z.string().optional(),
+	pinned: z.boolean().optional(),
+	data: z.unknown(),
+});
+
+const tabNodeSchema = z.object({
+	id: z.string(),
+	titleOverride: z.string().optional(),
+	createdAt: z.number(),
+	activePaneId: z.string().nullable(),
+	layout: layoutNodeSchema,
+	panes: z.record(z.string(), paneNodeSchema),
+});
+
+const EMPTY_PANE_LAYOUT: WorkspaceState<unknown> = {
+	version: 1,
+	tabs: [],
+	activeTabId: null,
+};
+
+/**
+ * Read-time heal for a persisted pane layout. An unparseable top-level shape
+ * (missing `version`/`tabs`, or the legacy `{ panes, focusedPaneId }` layout)
+ * resets to empty; individually-corrupt tabs (e.g. a split node missing a
+ * child) are dropped while valid tabs are kept, and `activeTabId` is repaired
+ * to point at a surviving tab. Prevents the renderer from rendering an
+ * undefined layout node.
+ */
+export function sanitizePaneLayout(raw: unknown): WorkspaceState<unknown> {
+	if (!raw || typeof raw !== "object") return EMPTY_PANE_LAYOUT;
+	const value = raw as Record<string, unknown>;
+	if (value.version !== 1 || !Array.isArray(value.tabs)) {
+		return EMPTY_PANE_LAYOUT;
+	}
+	const tabs = value.tabs.flatMap((tab): Tab<unknown>[] => {
+		const parsed = tabNodeSchema.safeParse(tab);
+		return parsed.success ? [parsed.data as Tab<unknown>] : [];
+	});
+	const activeTabId =
+		typeof value.activeTabId === "string" &&
+		tabs.some((tab) => tab.id === value.activeTabId)
+			? value.activeTabId
+			: (tabs[0]?.id ?? null);
+	return { version: 1, tabs, activeTabId };
+}
 
 const changesFilterSchema = z.discriminatedUnion("kind", [
 	z.object({ kind: z.literal("all") }),
@@ -172,8 +239,11 @@ export type V2TerminalPresetRow = z.infer<typeof v2TerminalPresetSchema>;
  *   - fileLinks / urlLinks: links embedded in terminal output and markdown.
  *     Terminal reads all 4 tiers; 2-tier surfaces (chat, task markdown)
  *     collapse shift→plain and metaShift→meta.
- *   - sidebarFileLinks: file rows in the sidebar (tree, changes, diff header)
- *     and similar in-app surfaces (port badges).
+ *   - sidebarFileLinks: file rows in the sidebar (tree, changes, diff header).
+ *
+ * portOpenAction is a single action (not a tier map) for detected-port
+ * badges: "pane" = in-app browser, "newTab" = new in-app tab,
+ * "external" = system browser.
  *
  * Resolution and labels live in src/renderer/lib/clickPolicy.
  */
@@ -212,6 +282,11 @@ const DEFAULT_SIDEBAR_FILE_LINKS: LinkTierMap = {
 	metaShift: "external",
 };
 
+// Clicking a port badge's open affordance opens http://localhost:<port>.
+// A single action chooses where: "pane" = in-app browser, "newTab" = new
+// in-app tab, "external" = system browser.
+const DEFAULT_PORT_OPEN_ACTION: LinkAction = "external";
+
 function isSameLinkTierMap(a: LinkTierMap, b: LinkTierMap): boolean {
 	return (
 		a.plain === b.plain &&
@@ -237,6 +312,7 @@ export const v2UserPreferencesSchema = z.object({
 	fileLinks: linkTierMapSchema.default(DEFAULT_LINK_TIER_MAP),
 	urlLinks: linkTierMapSchema.default(DEFAULT_LINK_TIER_MAP),
 	sidebarFileLinks: linkTierMapSchema.default(DEFAULT_SIDEBAR_FILE_LINKS),
+	portOpenAction: linkActionSchema.default(DEFAULT_PORT_OPEN_ACTION),
 	terminalPresetsInitialized: z.boolean().default(false),
 	rightSidebarOpen: z.boolean().default(true),
 	rightSidebarTab: z.enum(["changes", "files"]).default("changes"),
@@ -254,6 +330,7 @@ export const DEFAULT_V2_USER_PREFERENCES: V2UserPreferencesRow = {
 	fileLinks: DEFAULT_LINK_TIER_MAP,
 	urlLinks: DEFAULT_LINK_TIER_MAP,
 	sidebarFileLinks: DEFAULT_SIDEBAR_FILE_LINKS,
+	portOpenAction: DEFAULT_PORT_OPEN_ACTION,
 	terminalPresetsInitialized: false,
 	rightSidebarOpen: true,
 	rightSidebarTab: "changes",
@@ -277,6 +354,10 @@ export function healWorkspaceLocalState(raw: unknown): WorkspaceLocalStateRow {
 	) as Partial<WorkspaceLocalStateRow["sidebarState"]>;
 	return {
 		...r,
+		// Heal a malformed/legacy persisted layout so consumers never render an
+		// undefined node. Passed through untouched before, which white-screened
+		// the workspace view on a corrupt layout.
+		paneLayout: sanitizePaneLayout(r.paneLayout),
 		viewedFiles:
 			r.viewedFiles ?? WORKSPACE_LOCAL_STATE_OPTIONAL_DEFAULTS.viewedFiles,
 		recentlyViewedFiles:

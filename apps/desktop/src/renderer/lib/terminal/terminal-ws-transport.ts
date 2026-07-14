@@ -1,5 +1,15 @@
-import { primeRelayAffinity } from "@superset/workspace-client";
+import {
+	primeRelayAffinity,
+	type RelayAffinityProbe,
+} from "@superset/workspace-client";
 import type { Terminal as XTerm } from "@xterm/xterm";
+import { ensureFreshJwt } from "renderer/lib/auth-client";
+import { posthog } from "renderer/lib/posthog";
+import {
+	classifyTerminalFailure,
+	type TerminalFailureClassification,
+} from "./terminalConnectionDiagnostics";
+import { createWriteCoalescer, type WriteCoalescer } from "./write-coalescer";
 
 export type ConnectionState = "disconnected" | "connecting" | "open" | "closed";
 
@@ -64,6 +74,24 @@ export interface TerminalTransport {
 	/** Internal: bound resume handler shared by the online/focus/visibility
 	 * listeners, so they can be removed on teardown. */
 	_resumeListener: (() => void) | null;
+	/**
+	 * Internal: batches PTY output into one xterm.write per animation frame.
+	 * Agent CLIs emit repaints as many small chunks; per-chunk writes trigger
+	 * a parse/render cycle each and overwhelm the renderer (#2241, #2244).
+	 */
+	_writeCoalescer: WriteCoalescer | null;
+	/** Internal: last `_whoowns` probe, used to explain a failed connection. */
+	_lastProbe: RelayAffinityProbe | null;
+	/**
+	 * Why the connection is down, once the transport has stopped trying (gave
+	 * up, access denied, fatal server error, PTY exit). Null while healthy or
+	 * still auto-reconnecting. Drives the pane header status indicator.
+	 */
+	lastDiagnosis: TerminalFailureClassification | null;
+	/** Internal: bumped per connect() so async preflight callbacks from a
+	 * superseded attempt (reconnectNow re-entering the same URL) can't open a
+	 * duplicate socket or fatally terminate the newer attempt. */
+	_connectEpoch: number;
 }
 
 const MAX_LOG_ENTRIES = 200;
@@ -163,6 +191,10 @@ export function createTransport(): TerminalTransport {
 		_livenessTimer: null,
 		_lastLivenessTick: 0,
 		_resumeListener: null,
+		_writeCoalescer: null,
+		_lastProbe: null,
+		lastDiagnosis: null,
+		_connectEpoch: 0,
 	};
 }
 
@@ -300,6 +332,16 @@ function formatWsEndpoint(wsUrl: string | null): string {
 	}
 }
 
+// Relay-routed terminals live under `/hosts/<id>/...`; local ones don't.
+function isRelayHostUrl(wsUrl: string | null): boolean {
+	if (!wsUrl) return false;
+	try {
+		return new URL(wsUrl).pathname.startsWith("/hosts/");
+	} catch {
+		return false;
+	}
+}
+
 function formatCloseDetails(event: CloseEvent): string {
 	const code = event.code || "unknown";
 	const reason = event.reason ? `, reason: ${event.reason}` : "";
@@ -335,19 +377,29 @@ export function connect(
 	}
 
 	cancelReconnect(transport);
+	const epoch = ++transport._connectEpoch;
 	transport.currentUrl = wsUrl;
 	transport._terminal = terminal;
+	// Recreate per connect so the coalescer always targets the current
+	// terminal; dispose flushes anything the previous socket left pending.
+	transport._writeCoalescer?.dispose();
+	transport._writeCoalescer = createWriteCoalescer((data) =>
+		terminal.write(data),
+	);
 	transport._terminated = false;
+	transport.lastDiagnosis = null;
 	setupLiveness(transport);
 	setConnectionState(transport, "connecting");
 	const actualUrl = transport._hasReceivedBytes
 		? appendQueryParam(wsUrl, "replay", "0")
 		: wsUrl;
 
-	const openSocket = () => {
-		// Bail if the transport raced into a different URL or was disconnected
-		// while the pre-flight was in flight.
+	const openSocket = (targetUrl: string) => {
+		// Bail if the transport raced into a different URL, was disconnected, or
+		// a newer connect() superseded this attempt while the pre-flight was in
+		// flight.
 		if (
+			transport._connectEpoch !== epoch ||
 			transport.currentUrl !== wsUrl ||
 			transport.connectionState !== "connecting"
 		) {
@@ -355,12 +407,12 @@ export function connect(
 		}
 		let socket: WebSocket;
 		try {
-			socket = new WebSocket(actualUrl);
+			socket = new WebSocket(targetUrl);
 		} catch (err) {
 			pushLog(
 				transport,
 				"error",
-				`WebSocket construction failed for ${formatWsEndpoint(actualUrl)}: ${
+				`WebSocket construction failed for ${formatWsEndpoint(targetUrl)}: ${
 					err instanceof Error ? err.message : String(err)
 				}`,
 			);
@@ -376,21 +428,55 @@ export function connect(
 		attachSocketListeners(transport, terminal, socket);
 	};
 
-	// Pre-flight an HTTP request to lock fly's edge affinity to the owning
-	// machine before the WS upgrade. fly-replay isn't transparent on the
-	// upgrade itself (browser sees 200 → 1006 close), but is on plain HTTP,
-	// so a quick GET avoids the connect → 1006 → reconnect flicker. Skip
-	// for non-/hosts URLs (tests, local dev) so connect stays synchronous.
-	let needsPreFlight = false;
-	try {
-		needsPreFlight = new URL(actualUrl).pathname.startsWith("/hosts/");
-	} catch {
-		needsPreFlight = false;
-	}
-	if (needsPreFlight) {
-		void primeRelayAffinity(actualUrl).then(openSocket);
+	// Pre-flight `_whoowns` to pin fly edge affinity before the WS upgrade (see
+	// primeRelayAffinity); skip for non-/hosts URLs. Keep the result to explain
+	// a failure.
+	if (isRelayHostUrl(wsUrl)) {
+		transport._lastProbe = null;
+		// Relay URLs carry the user JWT, which rotates hourly. The URL was signed
+		// at render time, so reconnect attempts (this function re-entered from
+		// scheduleReconnect with the same currentUrl) would otherwise redial with
+		// an expired token forever — re-sign every attempt with a fresh one.
+		void ensureFreshJwt().then((token) => {
+			const signedUrl = token
+				? appendQueryParam(actualUrl, "token", token)
+				: actualUrl;
+			return primeRelayAffinity(signedUrl).then((probe) => {
+				transport._lastProbe = probe;
+				// 403 is a definitive access denial (the token is fresh), not a
+				// transient failure — retrying would hammer the relay with the same
+				// answer. Stop and surface it; a manual reconnect re-enters connect().
+				if (probe?.status === 403) {
+					if (
+						transport._connectEpoch !== epoch ||
+						transport.currentUrl !== wsUrl ||
+						transport.connectionState !== "connecting"
+					) {
+						return;
+					}
+					const diagnosis = classifyTerminalFailure(probe, true);
+					transport.lastDiagnosis = diagnosis;
+					pushLog(
+						transport,
+						"error",
+						`Connection refused for ${formatWsEndpoint(wsUrl)}: ${diagnosis.message} Not retrying.`,
+					);
+					posthog.capture("terminal_connect_failed", {
+						endpoint: formatWsEndpoint(wsUrl),
+						preflight_status: probe.status,
+						tunnel_region: probe.region,
+						reconnect_attempts: transport._reconnectAttempt,
+						category: diagnosis.category,
+					});
+					transport._terminated = true;
+					setConnectionState(transport, "closed");
+					return;
+				}
+				openSocket(signedUrl);
+			});
+		});
 	} else {
-		openSocket();
+		openSocket(actualUrl);
 	}
 }
 
@@ -411,12 +497,13 @@ function attachSocketListeners(
 		// channel; renderer treats them identically). Pipe straight into
 		// xterm without any decoding step.
 		if (event.data instanceof ArrayBuffer) {
-			// Pipe PTY bytes straight into xterm. There's no output ACK back to
-			// host-service: back-pressure lives entirely on the host side, which
-			// bounds this socket's send buffer and drops us (we reconnect and
-			// replay) if we fall hopelessly behind. That means a slow/stalled
-			// renderer can never wedge the shell — it just loses some scrollback.
-			terminal.write(new Uint8Array(event.data));
+			// Queue PTY bytes; the coalescer batches them into one xterm.write
+			// per animation frame. There's no output ACK back to host-service:
+			// back-pressure lives entirely on the host side, which bounds this
+			// socket's send buffer and drops us (we reconnect and replay) if we
+			// fall hopelessly behind. That means a slow/stalled renderer can
+			// never wedge the shell — it just loses some scrollback.
+			transport._writeCoalescer?.push(new Uint8Array(event.data));
 			transport._hasReceivedBytes = true;
 			return;
 		}
@@ -425,6 +512,7 @@ function attachSocketListeners(
 		try {
 			message = JSON.parse(String(event.data)) as TerminalServerMessage;
 		} catch {
+			transport._writeCoalescer?.flushSync();
 			terminal.writeln("\r\n[terminal] invalid server payload");
 			return;
 		}
@@ -435,12 +523,17 @@ function attachSocketListeners(
 		}
 
 		if (message.type === "attached") {
+			transport.lastDiagnosis = null;
 			setConnectionState(transport, "open");
 			sendResize(transport, terminal.cols, terminal.rows);
 			return;
 		}
 
 		if (message.type === "error") {
+			transport.lastDiagnosis = {
+				category: "unknown",
+				message: message.message,
+			};
 			pushLog(transport, "error", message.message);
 			// Server closes after this; reconnecting would just hit the same error.
 			transport._terminated = true;
@@ -449,7 +542,12 @@ function attachSocketListeners(
 		}
 
 		if (message.type === "exit") {
+			transport._writeCoalescer?.flushSync();
 			transport._terminated = true;
+			transport.lastDiagnosis = {
+				category: "unknown",
+				message: `The terminal session ended (exit code ${message.exitCode}).`,
+			};
 			cancelReconnect(transport);
 			terminal.writeln(
 				`\r\n[terminal] exited with code ${message.exitCode} (signal ${message.signal})`,
@@ -459,6 +557,9 @@ function attachSocketListeners(
 
 	socket.addEventListener("close", (event) => {
 		if (transport.socket !== socket) return;
+		// Render whatever arrived before the close instead of holding it for a
+		// frame that may never come (e.g. hidden window).
+		transport._writeCoalescer?.flushSync();
 		setConnectionState(transport, "closed");
 		transport.socket = null;
 		if (!transport._terminated && event.code !== 1000) {
@@ -466,11 +567,36 @@ function attachSocketListeners(
 				!transport._reconnectTimer &&
 				Boolean(transport.currentUrl && transport._terminal) &&
 				transport._reconnectAttempt < MAX_RECONNECT_ATTEMPTS;
-			pushLog(
-				transport,
-				willReconnect ? "warn" : "error",
-				`WebSocket closed while connected to ${formatWsEndpoint(transport.currentUrl)} (${formatCloseDetails(event)}). ${willReconnect ? "Reconnecting..." : "Max reconnect attempts reached."}`,
-			);
+			const endpoint = formatWsEndpoint(transport.currentUrl);
+			if (willReconnect) {
+				pushLog(
+					transport,
+					"warn",
+					`WebSocket closed while connected to ${endpoint} (${formatCloseDetails(event)}). Reconnecting (attempt ${transport._reconnectAttempt + 1}/${MAX_RECONNECT_ATTEMPTS})...`,
+				);
+			} else {
+				// Gave up. Classify why from the preflight probe and record it so
+				// this failure mode is queryable, not silent.
+				const diagnosis = classifyTerminalFailure(
+					transport._lastProbe,
+					isRelayHostUrl(transport.currentUrl),
+				);
+				transport.lastDiagnosis = diagnosis;
+				pushLog(
+					transport,
+					"error",
+					`WebSocket closed while connected to ${endpoint} (${formatCloseDetails(event)}). Max reconnect attempts reached. ${diagnosis.message}`,
+				);
+				posthog.capture("terminal_connect_failed", {
+					endpoint,
+					close_code: event.code,
+					close_reason: event.reason || undefined,
+					preflight_status: transport._lastProbe?.status ?? null,
+					tunnel_region: transport._lastProbe?.region ?? null,
+					reconnect_attempts: transport._reconnectAttempt,
+					category: diagnosis.category,
+				});
+			}
 		}
 		// Auto-reconnect on unexpected close (host-service restart, network blip)
 		scheduleReconnect(transport);
@@ -500,9 +626,12 @@ export function disconnect(transport: TerminalTransport) {
 		transport.socket.close();
 		transport.socket = null;
 	}
+	transport._writeCoalescer?.dispose();
+	transport._writeCoalescer = null;
 	transport.currentUrl = null;
 	transport._terminal = null;
 	transport._reconnectAttempt = 0;
+	transport.lastDiagnosis = null;
 	setTerminalTitle(transport, undefined);
 	setConnectionState(transport, "disconnected");
 	transport.onDataDisposable?.dispose();
@@ -540,9 +669,12 @@ export function disposeTransport(transport: TerminalTransport) {
 		transport.socket.close();
 		transport.socket = null;
 	}
+	transport._writeCoalescer?.dispose();
+	transport._writeCoalescer = null;
 	transport.currentUrl = null;
 	transport._terminal = null;
 	transport._reconnectAttempt = 0;
+	transport.lastDiagnosis = null;
 	setTerminalTitle(transport, undefined);
 	transport.onDataDisposable?.dispose();
 	transport.onDataDisposable = null;

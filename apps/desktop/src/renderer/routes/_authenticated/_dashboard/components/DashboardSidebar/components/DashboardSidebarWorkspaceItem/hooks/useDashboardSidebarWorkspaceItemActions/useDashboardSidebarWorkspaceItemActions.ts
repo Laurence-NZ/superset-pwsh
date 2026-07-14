@@ -1,6 +1,10 @@
 import { toast } from "@superset/ui/sonner";
 import { useMatchRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import {
+	useMarkWorkspaceTerminalsSeen,
+	useV2WorkspaceIsUnread,
+} from "renderer/hooks/host-service/useV2NotificationStatus";
 import { useCopyToClipboard } from "renderer/hooks/useCopyToClipboard";
 import { getOpenInFileManagerLabel } from "renderer/lib/file-manager-labels";
 import { getHostServiceClientByUrl } from "renderer/lib/host-service-client";
@@ -11,10 +15,7 @@ import { useDashboardSidebarState } from "renderer/routes/_authenticated/hooks/u
 import { useOptimisticCollectionActions } from "renderer/routes/_authenticated/hooks/useOptimisticCollectionActions";
 import { useLocalHostService } from "renderer/routes/_authenticated/providers/LocalHostServiceProvider";
 import { useRemoveFromSidebarIntent } from "renderer/stores/remove-workspace-from-sidebar-intent";
-import {
-	useV2NotificationStore,
-	useV2WorkspaceIsUnread,
-} from "renderer/stores/v2-notifications";
+import { useV2NotificationStore } from "renderer/stores/v2-notifications";
 
 interface UseDashboardSidebarWorkspaceItemActionsOptions {
 	workspaceId: string;
@@ -38,11 +39,15 @@ export function useDashboardSidebarWorkspaceItemActions({
 	const { copyToClipboard } = useCopyToClipboard();
 	const { v2Workspaces: workspaceActions } = useOptimisticCollectionActions();
 	const { requestSectionRename } = useDashboardSidebarSectionRename();
-	const clearWorkspaceAttention = useV2NotificationStore(
-		(s) => s.clearWorkspaceAttention,
-	);
 	const setManualUnread = useV2NotificationStore((s) => s.setManualUnread);
+	const clearManualUnread = useV2NotificationStore((s) => s.clearManualUnread);
+	const markWorkspaceTerminalsSeen = useMarkWorkspaceTerminalsSeen(workspaceId);
 	const isUnread = useV2WorkspaceIsUnread(workspaceId);
+
+	const clearWorkspaceAttention = () => {
+		clearManualUnread(workspaceId);
+		markWorkspaceTerminalsSeen();
+	};
 	const { createSection, moveWorkspaceToSection, removeWorkspaceFromSidebar } =
 		useDashboardSidebarState();
 
@@ -58,7 +63,7 @@ export function useDashboardSidebarWorkspaceItemActions({
 
 	const handleClick = () => {
 		if (isRenaming) return;
-		clearWorkspaceAttention(workspaceId);
+		clearWorkspaceAttention();
 		navigate({
 			to: "/v2-workspace/$workspaceId",
 			params: { workspaceId },
@@ -145,10 +150,16 @@ export function useDashboardSidebarWorkspaceItemActions({
 
 	const handleToggleUnread = () => {
 		if (isUnread) {
-			clearWorkspaceAttention(workspaceId);
+			clearWorkspaceAttention();
 		} else {
 			setManualUnread(workspaceId);
 		}
+	};
+
+	// Working/permission dots are live host state now and can't be wiped;
+	// "clear status" clears everything attention-shaped (manual + reviews).
+	const handleClearStatus = () => {
+		clearWorkspaceAttention();
 	};
 
 	const handleCopyBranchName = async () => {
@@ -168,6 +179,7 @@ export function useDashboardSidebarWorkspaceItemActions({
 
 	return {
 		cancelRename,
+		handleClearStatus,
 		handleClick,
 		handleCopyPath,
 		handleCopyBranchName,
