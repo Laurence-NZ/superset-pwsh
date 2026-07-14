@@ -1,6 +1,33 @@
 # Windows Port Audit
 
-Last updated: 2026-06-09
+Last updated: 2026-07-14
+
+## Applied patches (merge checklist)
+
+Each Windows adaptation on this branch, keyed to its **commit hash** (stable
+across `main` merges — the commits stay in history even after upstream rewrites
+the surrounding code). When merging `main` again, for each row run
+`git show <hash>` to see the exact original change, then confirm the target
+still exists and still needs the adaptation — upstream refactors move/rewrite
+these files silently (text auto-merges, behaviour breaks). PATCHES refs point at
+`docs/superset-windows-PATCHES.md`; not-yet-applied candidates live in
+`docs/windows-port-remaining-patches.md`.
+
+| Commit | Fix | Where it lives (verify at merge) | PATCHES |
+|---|---|---|---|
+| `61132970e` | Foundational native Windows desktop port (broad) | many — inspect `git show` | — |
+| `b930f6267` | Claude notify-hook command works on Windows | agent notify-hook / `@superset/shared/shell` | — |
+| `ee5eda5c5` | Native rebuild fix (native-keymap + node-pty/winpty) | `patches/native-keymap@3.3.9.patch` + `patchedDependencies` in root `package.json` | 14 |
+| `b3d6724f2` | Biome `lineEnding` pinned to `lf` (never `auto`) | `biome.json` | 2 |
+| `98bc94ca9` | repoPath-keyed setup override works on Windows | `packages/host-service` runtime setup | — |
+| `668766fe6` | V2 terminals default to PowerShell 7 | `packages/host-service/src/terminal/user-shell.ts` | 26, 33 |
+| `6483e7884` | Preserve `&&` in V2 agent launch commands | V2 agent launch command builder | 29 |
+| `e29c19079` | Ringtone **preview** via WPF MediaPlayer | `apps/desktop/src/main/lib/play-sound.ts` | 31 |
+| `44cdf3913` | Backfill `PATHEXT` + Windows system env for V2 terminals | `packages/host-service/src/terminal/env.ts` (`buildV2TerminalEnv`) | — |
+| `5a5a45d4e` | `windowsHide: true` on `taskkill.exe` + `where.exe` (console-flash) | `packages/host-service/src/ports/tree-kill.ts`, `apps/desktop/src/main/lib/tree-kill.ts`, `apps/desktop/src/main/lib/agent-setup/utils.ts` | 23 (partial) |
+
+Docs-only commits (`146a87fa1`, `54cfdfa5e`, `e3d4b3538`, `f483b130a`,
+`f9db0bfe2`) are guidance, not code — no merge re-check needed.
 
 ## Current Status
 
