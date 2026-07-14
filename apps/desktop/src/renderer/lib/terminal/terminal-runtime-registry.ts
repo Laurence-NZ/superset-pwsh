@@ -11,6 +11,7 @@ import {
 	createRuntime,
 	detachFromContainer,
 	disposeRuntime,
+	persistRuntime,
 	type TerminalRuntime,
 	updateRuntimeAppearance,
 } from "./terminal-runtime";
@@ -375,6 +376,18 @@ class TerminalRuntimeRegistryImpl {
 		);
 	}
 
+	/**
+	 * Snapshot every live runtime's buffer to localStorage. Called as the app is
+	 * hidden/closing so the read-only restore after a restart shows the actual
+	 * on-screen state (including a full-screen TUI's alternate buffer) rather
+	 * than the stale snapshot from the last tab/workspace switch.
+	 */
+	persistAll(): void {
+		for (const entry of this.entries.values()) {
+			if (entry.runtime) persistRuntime(entry.runtime);
+		}
+	}
+
 	getAllTerminalIds(): Set<string> {
 		return new Set(this.entryKeysByTerminalId.keys());
 	}
@@ -475,6 +488,23 @@ export const terminalRuntimeRegistry: TerminalRuntimeRegistryImpl =
 
 if (import.meta.hot) {
 	import.meta.hot.data.registry = terminalRuntimeRegistry;
+}
+
+// Snapshot live buffers as the app goes away so a full-screen TUI (Claude,
+// vim) restores as read-only reference instead of a blank screen. `pagehide`
+// covers the app quit; `visibilitychange`→hidden also captures a minimize or
+// app-switch before an OS reboot. Guarded so HMR re-eval doesn't stack
+// listeners on the preserved singleton.
+if (
+	typeof window !== "undefined" &&
+	!import.meta.hot?.data?.persistHooksAdded
+) {
+	const persistAll = () => terminalRuntimeRegistry.persistAll();
+	window.addEventListener("pagehide", persistAll);
+	document.addEventListener("visibilitychange", () => {
+		if (document.visibilityState === "hidden") persistAll();
+	});
+	if (import.meta.hot) import.meta.hot.data.persistHooksAdded = true;
 }
 
 export type {

@@ -80,10 +80,17 @@ export function TerminalConnectionIndicator({
 		return null;
 	}
 
+	// The live shell is gone for good (Windows app restart / reboot): a neutral
+	// read-only tombstone, not a failure — reconnecting would just re-fail.
+	const sessionEnded = diagnosis?.category === "session_ended";
 	// Red only once the transport has stopped trying; amber covers both the
 	// in-flight dial and the backoff pause between attempts.
 	const gaveUp = diagnosis !== null && connectionState === "closed";
-	const label = gaveUp ? "Disconnected" : "Reconnecting…";
+	const label = sessionEnded
+		? "Previous session (ended)"
+		: gaveUp
+			? "Disconnected"
+			: "Reconnecting…";
 
 	return (
 		<Popover>
@@ -96,7 +103,11 @@ export function TerminalConnectionIndicator({
 					<span
 						className={cn(
 							"size-1.5 rounded-full",
-							gaveUp ? "bg-destructive" : "animate-pulse bg-yellow-500",
+							sessionEnded
+								? "bg-muted-foreground"
+								: gaveUp
+									? "bg-destructive"
+									: "animate-pulse bg-yellow-500",
 						)}
 					/>
 					<span>{label}</span>
@@ -109,19 +120,21 @@ export function TerminalConnectionIndicator({
 							"The terminal connection dropped. Retrying automatically…"}
 					</p>
 					<div className="flex items-center gap-2">
-						<Button
-							size="sm"
-							variant="outline"
-							className="h-6 px-2 text-xs"
-							onClick={() =>
-								terminalRuntimeRegistry.retryConnect(
-									terminalId,
-									terminalInstanceId,
-								)
-							}
-						>
-							Reconnect
-						</Button>
+						{!sessionEnded && (
+							<Button
+								size="sm"
+								variant="outline"
+								className="h-6 px-2 text-xs"
+								onClick={() =>
+									terminalRuntimeRegistry.retryConnect(
+										terminalId,
+										terminalInstanceId,
+									)
+								}
+							>
+								Reconnect
+							</Button>
+						)}
 						{logs.length > 0 && (
 							<button
 								type="button"

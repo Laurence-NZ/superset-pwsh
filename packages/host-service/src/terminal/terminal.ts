@@ -171,6 +171,12 @@ const MAX_BUFFER_BYTES = 64 * 1024;
 const SESSION_RESTORED_NOTICE = new TextEncoder().encode(
 	"\r\n\x1b[90m─── Session Contents Restored ───\x1b[0m\r\n\r\n",
 );
+// Sentinel `error` message the renderer's WS transport recognises to show a
+// read-only "Previous session (ended)" tombstone (scrollback preserved) rather
+// than a red "Disconnected" pill. Sent when the live PTY is gone and can't be
+// adopted — always the case on Windows after an app restart, where the detached
+// pty-daemon can't outlive the app. Kept in sync with terminal-ws-transport.ts.
+const SESSION_ENDED_ERROR = "SESSION_ENDED";
 // Cap on a single renderer socket's unflushed WebSocket send buffer. With no
 // ACK flow control, a renderer that stops draining (slow paint, pinned main
 // thread, dead tab) would let this buffer grow without bound → host OOM (the
@@ -1441,7 +1447,7 @@ export function registerWorkspaceTerminalRoute({
 					return { error: `Terminal session "${terminalId}" is disposed.` };
 				}
 				if (record.status === "exited") {
-					return { error: `Terminal session "${terminalId}" has exited.` };
+					return { error: SESSION_ENDED_ERROR };
 				}
 				if (!record.originWorkspaceId) {
 					return {
@@ -1473,18 +1479,13 @@ export function registerWorkspaceTerminalRoute({
 				});
 				if (!("error" in adopted)) return adopted;
 
-				// Active row but daemon no longer owns the PTY (laptop sleep,
-				// daemon restart, machine reboot). Respawn rather than dead-end
-				// the pane — the renderer's xterm scrollback stays painted above.
-				console.log(`[terminal] respawning lost session ${terminalId}`);
-				return createTerminalSessionInternal({
-					terminalId,
-					workspaceId: record.originWorkspaceId,
-					themeType,
-					db,
-					eventBus,
-					restoredNotice: true,
-				});
+				// Active row but the daemon no longer owns the PTY (laptop sleep,
+				// daemon restart, machine reboot — and always on Windows, where the
+				// detached daemon can't outlive the app). The live shell is gone, so
+				// don't respawn a fresh one over the renderer's painted scrollback:
+				// signal "ended" so the pane tombstones read-only. The user opens a
+				// new tab for a fresh shell.
+				return { error: SESSION_ENDED_ERROR };
 			};
 
 			return {

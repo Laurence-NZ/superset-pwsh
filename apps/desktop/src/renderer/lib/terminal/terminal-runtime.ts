@@ -308,6 +308,18 @@ export function attachToContainer(
 	}
 }
 
+/**
+ * Snapshot a live runtime's buffer + dimensions to localStorage without
+ * detaching it. Called as the app is hidden/closing so the on-screen state —
+ * including the alternate-screen buffer of a full-screen TUI (Claude, vim,
+ * less) — is captured; otherwise the only snapshot is the stale one from the
+ * last detach, which predates the alt-screen and restores blank.
+ */
+export function persistRuntime(runtime: TerminalRuntime) {
+	persistBuffer(runtime.terminalId, runtime.serializeAddon);
+	persistDimensions(runtime.terminalId, runtime.lastCols, runtime.lastRows);
+}
+
 export function detachFromContainer(runtime: TerminalRuntime) {
 	persistBuffer(runtime.terminalId, runtime.serializeAddon);
 	persistDimensions(runtime.terminalId, runtime.lastCols, runtime.lastRows);

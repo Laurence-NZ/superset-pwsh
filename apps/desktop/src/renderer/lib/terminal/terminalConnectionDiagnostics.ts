@@ -5,6 +5,9 @@ export type TerminalFailureCategory =
 	| "host-offline"
 	| "unauthorized"
 	| "stream-blocked"
+	// Live shell gone and unadoptable (Windows app restart / reboot); the pane
+	// shows read-only scrollback rather than a connection failure.
+	| "session_ended"
 	| "unknown";
 
 export interface TerminalFailureClassification {

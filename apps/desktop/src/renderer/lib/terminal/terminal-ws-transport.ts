@@ -530,11 +530,26 @@ function attachSocketListeners(
 		}
 
 		if (message.type === "error") {
-			transport.lastDiagnosis = {
-				category: "unknown",
-				message: message.message,
-			};
-			pushLog(transport, "error", message.message);
+			// Backend sentinel: the previous shell is gone and couldn't be adopted
+			// (always the case on Windows after an app restart). Show a read-only
+			// tombstone rather than a red failure — scrollback stays painted and
+			// input is already blocked by the closed socket. Kept in sync with
+			// SESSION_ENDED_ERROR in host-service terminal.ts.
+			const sessionEnded = message.message === "SESSION_ENDED";
+			transport.lastDiagnosis = sessionEnded
+				? {
+						category: "session_ended",
+						message:
+							"Previous session (ended). Open a new tab to start a fresh shell.",
+					}
+				: { category: "unknown", message: message.message };
+			pushLog(
+				transport,
+				sessionEnded ? "info" : "error",
+				sessionEnded
+					? "Previous session ended; showing read-only scrollback."
+					: message.message,
+			);
 			// Server closes after this; reconnecting would just hit the same error.
 			transport._terminated = true;
 			cancelReconnect(transport);
