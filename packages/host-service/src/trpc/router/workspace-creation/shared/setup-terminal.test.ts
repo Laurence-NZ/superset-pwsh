@@ -104,6 +104,17 @@ describe("resolveInitialCommand", () => {
 		expect(command).not.toContain(" && ");
 	});
 
+	it("joins setup commands with ' && ' under pwsh 7 on Windows", () => {
+		const command = buildSetupCommand(
+			["bun install", "bun run db:migrate"],
+			"pwsh.exe",
+			"win32",
+		);
+
+		expect(command).toBe("bun install && bun run db:migrate");
+		expect(command).not.toContain("$?");
+	});
+
 	it("uses the PowerShell setup chain when resolving configured setup commands", () => {
 		writeConfig(sandbox.repoPath, {
 			setup: ["bun install", "bun run db:migrate"],

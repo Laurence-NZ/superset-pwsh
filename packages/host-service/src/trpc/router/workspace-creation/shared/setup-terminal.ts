@@ -113,8 +113,9 @@ export function resolveInitialCommand(args: {
 
 /**
  * Chain configured setup commands for the launch shell so a failing command
- * short-circuits the rest. POSIX/cmd use `&&`; Windows PowerShell has no `&&`
- * short-circuit (5.1), so each command gets an explicit failure guard.
+ * short-circuits the rest. POSIX/cmd and PowerShell 7+ (`pwsh`) use `&&`;
+ * only legacy Windows PowerShell 5.1 (`powershell`) lacks `&&`, so there each
+ * command gets an explicit failure guard.
  */
 export function buildSetupCommand(
 	commands: string[],
@@ -122,10 +123,7 @@ export function buildSetupCommand(
 	platform: NodeJS.Platform = process.platform,
 ): string {
 	const knownShell = shell ? getKnownShell(shell) : "unknown";
-	if (
-		platform === "win32" &&
-		(knownShell === "powershell" || knownShell === "pwsh")
-	) {
+	if (platform === "win32" && knownShell === "powershell") {
 		const guard =
 			"if (-not $?) { if ($LASTEXITCODE -is [int] -and $LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; exit 1 }";
 		return commands.map((command) => `${command}; ${guard}`).join("; ");
