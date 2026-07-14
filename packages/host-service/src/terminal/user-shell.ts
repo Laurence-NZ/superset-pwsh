@@ -1,4 +1,7 @@
+import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import os from "node:os";
+import { basename, join } from "node:path";
 
 type ShellEnvSource = Record<string, string | undefined>;
 
@@ -52,7 +55,7 @@ export function resolveConfiguredShell(
 	const platform = options.platform ?? process.platform;
 
 	if (platform === "win32") {
-		return normalizeShellPath(env.COMSPEC) ?? "cmd.exe";
+		return resolveWindowsShell(env);
 	}
 
 	const accountShell =
@@ -63,4 +66,98 @@ export function resolveConfiguredShell(
 			: normalizeShellPath(options.accountShell);
 
 	return accountShell ?? normalizeShellPath(env.SHELL) ?? "/bin/sh";
+}
+
+/**
+ * Read a Windows env var case-insensitively. GUI-launched Electron/Node env
+ * snapshots can spell keys differently from an interactive shell (e.g. `Path`
+ * vs `PATH`, `ProgramFiles` vs `PROGRAMFILES`).
+ */
+function getEnvCaseInsensitive(
+	env: ShellEnvSource,
+	key: string,
+): string | undefined {
+	const direct = env[key];
+	if (direct !== undefined) return direct;
+	const lower = key.toLowerCase();
+	for (const k of Object.keys(env)) {
+		if (k.toLowerCase() === lower) return env[k];
+	}
+	return undefined;
+}
+
+// Resolved once per process — see resolvePwsh7().
+let cachedPwsh7: string | null | undefined;
+
+/**
+ * Resolve the shell for Windows V2 terminals.
+ *
+ * Order: explicit `SUPERSET_TERMINAL_SHELL` override → PowerShell 7 (`pwsh`)
+ * when a validated install exists → `COMSPEC`/`cmd.exe`. Legacy Windows
+ * PowerShell (`powershell.exe`) is never auto-selected; a user who wants it
+ * must set the override explicitly.
+ */
+function resolveWindowsShell(env: ShellEnvSource): string {
+	const override = normalizeShellPath(
+		getEnvCaseInsensitive(env, "SUPERSET_TERMINAL_SHELL"),
+	);
+	if (override) return override;
+
+	const comspec =
+		normalizeShellPath(getEnvCaseInsensitive(env, "COMSPEC")) ?? "cmd.exe";
+
+	// Only touch the filesystem / spawn a probe on a real Windows host. Tests
+	// simulate win32 via options.platform on non-Windows CI and must not spawn.
+	if (process.platform !== "win32") return comspec;
+
+	return resolvePwsh7(env) ?? comspec;
+}
+
+function resolvePwsh7(env: ShellEnvSource): string | null {
+	if (cachedPwsh7 !== undefined) return cachedPwsh7;
+	cachedPwsh7 = discoverPwsh7(env);
+	return cachedPwsh7;
+}
+
+function discoverPwsh7(env: ShellEnvSource): string | null {
+	const candidates: string[] = [];
+	const programFiles = getEnvCaseInsensitive(env, "ProgramFiles");
+	if (programFiles) {
+		candidates.push(join(programFiles, "PowerShell", "7", "pwsh.exe"));
+		candidates.push(join(programFiles, "PowerShell", "7-preview", "pwsh.exe"));
+	}
+	// PATH entries catch a PATH-installed pwsh and the Store execution alias.
+	// ProgramFiles is checked first so a real install wins over the alias.
+	const pathValue = getEnvCaseInsensitive(env, "PATH");
+	if (pathValue) {
+		for (const dir of pathValue.split(";")) {
+			const trimmed = dir.trim();
+			if (trimmed) candidates.push(join(trimmed, "pwsh.exe"));
+		}
+	}
+
+	for (const candidate of candidates) {
+		const name = basename(candidate).toLowerCase();
+		if (name !== "pwsh.exe" && name !== "pwsh") continue;
+		if (!existsSync(candidate)) continue;
+		if (pwshMajorVersion(candidate) >= 7) return candidate;
+	}
+	// ponytail: skip Get-AppxPackage EPERM enumeration for Store-only installs;
+	// add if a machine has pwsh solely as a WindowsApps package.
+	return null;
+}
+
+/** Probe `pwsh` version; returns 0 on any failure so callers can compare `>= 7`. */
+function pwshMajorVersion(exe: string): number {
+	try {
+		const out = execFileSync(
+			exe,
+			["-NoLogo", "-NoProfile", "-Command", "$PSVersionTable.PSVersion.Major"],
+			{ timeout: 3000, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+		);
+		const major = Number.parseInt(out.trim(), 10);
+		return Number.isFinite(major) ? major : 0;
+	} catch {
+		return 0;
+	}
 }
