@@ -381,9 +381,16 @@ export function resolvePath(filePath: string, cwd?: string): string {
  */
 export function spawnAsync(command: string, args: string[]): Promise<void> {
 	return new Promise((resolve, reject) => {
-		const child = spawn(command, args, {
+		// On Windows the editor CLIs are .cmd/.bat shims (e.g. code.cmd). A bare
+		// spawn("code") can't resolve those via PATHEXT and fails with ENOENT, so
+		// route through cmd.exe. shell:true doesn't quote args, so quote them here
+		// to survive spaces in the target path.
+		const useShell = process.platform === "win32";
+		const child = spawn(command, useShell ? args.map((a) => `"${a}"`) : args, {
 			stdio: ["ignore", "ignore", "pipe"],
 			detached: false,
+			shell: useShell,
+			windowsHide: true,
 		});
 
 		let stderr = "";
