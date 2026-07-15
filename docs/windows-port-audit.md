@@ -1,6 +1,6 @@
 # Windows Port Audit
 
-Last updated: 2026-07-14
+Last updated: 2026-07-15
 
 ## Applied patches (merge checklist)
 
@@ -25,6 +25,8 @@ these files silently (text auto-merges, behaviour breaks). PATCHES refs point at
 | `e29c19079` | Ringtone **preview** via WPF MediaPlayer | `apps/desktop/src/main/lib/play-sound.ts` | 31 |
 | `44cdf3913` | Backfill `PATHEXT` + Windows system env for V2 terminals | `packages/host-service/src/terminal/env.ts` (`buildV2TerminalEnv`) | — |
 | `5a5a45d4e` | `windowsHide: true` on `taskkill.exe` + `where.exe` (console-flash) | `packages/host-service/src/ports/tree-kill.ts`, `apps/desktop/src/main/lib/tree-kill.ts`, `apps/desktop/src/main/lib/agent-setup/utils.ts` | 23 (partial) |
+| `86ce750ab` | `createClaudeSettingsJson` no-op on win32 (user wires own `~/.claude` hook) | `apps/desktop/src/main/lib/agent-setup/agent-wrappers-claude-codex-opencode.ts` | — |
+| `8e5ba3be9` | Skip cursor/codex/gemini/pi global-dotfile hook injection on win32 | `agent-wrappers-{cursor,gemini,pi}.ts` + `agent-wrappers-claude-codex-opencode.ts` (`createCodexHooksJson`) | — |
 
 Docs-only commits (`146a87fa1`, `54cfdfa5e`, `e3d4b3538`, `f483b130a`,
 `f9db0bfe2`) are guidance, not code — no merge re-check needed.
