@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import {
+	existsSync,
 	mkdirSync,
 	mkdtempSync,
 	rmSync,
@@ -515,6 +516,41 @@ describe("workspaceCleanup.destroy cleanup ordering", () => {
 				`Skipped worktree removal at ${tmp}: project metadata is missing`,
 			);
 			expect(cloudCallCount).toBe(1);
+		} finally {
+			rmSync(tmp, { recursive: true, force: true });
+		}
+	});
+
+	test("removes an on-disk worktree git unregistered but left behind (pnpm symlinks)", async () => {
+		const tmp = mkdtempSync(join(tmpdir(), "workspace-delete-"));
+		// Reproduce git's Windows failure mode: worktreeList is empty (git
+		// considers it unregistered), but its recursive delete bailed on a
+		// pnpm-style node_modules symlink, leaving the tree on disk. The
+		// destroy saga must finish the removal itself via fs.rm.
+		const store = join(tmp, "node_modules", ".pnpm", "pkg");
+		mkdirSync(store, { recursive: true });
+		writeFileSync(join(store, "index.js"), "");
+		symlinkSync(store, join(tmp, "node_modules", "pkg"));
+		try {
+			const ctx = makeCtx({
+				workspace: {
+					id: "ws-1",
+					projectId: "p-1",
+					worktreePath: tmp,
+					branch: "feature",
+				},
+				project: { id: "p-1", repoPath: "/repo" },
+			});
+			const caller = workspaceCleanupRouter.createCaller(ctx);
+
+			const result = await caller.destroy({
+				workspaceId: "ws-1",
+				deleteBranch: false,
+				force: true,
+			});
+
+			expect(result.worktreeRemoved).toBe(true);
+			expect(existsSync(tmp)).toBe(false);
 		} finally {
 			rmSync(tmp, { recursive: true, force: true });
 		}

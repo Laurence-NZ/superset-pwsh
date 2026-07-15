@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { TRPCError } from "@trpc/server";
 import { and, eq, ne } from "drizzle-orm";
 import { z } from "zod";
@@ -359,6 +360,28 @@ async function runDestroy(
 				});
 			}
 			worktreeRemoved = true;
+
+			// git unregistered the worktree but on Windows its own recursive
+			// delete bails on pnpm's node_modules junctions (and any locked
+			// file), orphaning the directory tree on disk while reporting
+			// success. Finish the job ourselves: fs.rm unlinks junctions as
+			// links (never recursing into their targets) and retries transient
+			// Windows EBUSY/EPERM locks where MSYS git gives up.
+			if (existsSync(local.worktreePath)) {
+				try {
+					await rm(local.worktreePath, {
+						recursive: true,
+						force: true,
+						maxRetries: 5,
+						retryDelay: 100,
+					});
+				} catch (err) {
+					const message = err instanceof Error ? err.message : String(err);
+					warnings.push(
+						`Removed worktree from git but left files at ${local.worktreePath}: ${message}`,
+					);
+				}
+			}
 		}
 	}
 
