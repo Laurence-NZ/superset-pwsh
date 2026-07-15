@@ -124,12 +124,15 @@ describe("shell helpers", () => {
 		).toBe(`cd '/tmp/one'"'"'s repo'`);
 	});
 
-	test("uses CRLF command endings for native Windows shells", () => {
+	test("uses a bare CR for PowerShell, CRLF for cmd, LF for POSIX", () => {
+		// PowerShell/PSReadLine leaves a ">>" continuation prompt if a trailing
+		// LF follows the accepted CR, so it gets a lone CR (what Enter sends).
+		expect(getShellLineEnding("pwsh.exe")).toBe("\r");
+		expect(getShellLineEnding("powershell.exe")).toBe("\r");
 		expect(getShellLineEnding("cmd.exe")).toBe("\r\n");
-		expect(getShellLineEnding("pwsh.exe")).toBe("\r\n");
 		expect(getShellLineEnding("/bin/bash")).toBe("\n");
 		expect(appendShellLineEnding("echo ok", "powershell.exe")).toBe(
-			"echo ok\r\n",
+			"echo ok\r",
 		);
 		expect(appendShellLineEnding("echo ok\n", "powershell.exe")).toBe(
 			"echo ok\n",

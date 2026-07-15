@@ -133,13 +133,17 @@ export function buildShellChangeDirectoryCommand(
 	return `cd ${quotePosixShellLiteral(cwd)}`;
 }
 
-export function getShellLineEnding(shell?: string | null): "\r\n" | "\n" {
+export function getShellLineEnding(
+	shell?: string | null,
+): "\r\n" | "\r" | "\n" {
 	const knownShell = shell ? getKnownShell(shell) : "unknown";
-	return knownShell === "cmd" ||
-		knownShell === "powershell" ||
-		knownShell === "pwsh"
-		? "\r\n"
-		: "\n";
+	// PSReadLine accepts the line on the CR, then treats the trailing LF of a
+	// CRLF as a fresh keystroke — leaving a ">>" continuation prompt on the next
+	// line after the command runs. A lone CR is exactly what the Enter key
+	// sends, so use it for PowerShell. cmd.exe tolerates CRLF, so leave it.
+	if (knownShell === "powershell" || knownShell === "pwsh") return "\r";
+	if (knownShell === "cmd") return "\r\n";
+	return "\n";
 }
 
 export function appendShellLineEnding(
