@@ -56,6 +56,16 @@ export function getPiExtensionContent(): string {
  * start working with no further setup.
  */
 export function createPiExtension(): void {
+	// Windows port: don't install the Superset pi extension into the user's
+	// global ~/.pi on win32. Intentional; mirrors createClaudeSettingsJson — we
+	// don't churn a global dotfile with an integration that isn't Windows-verified
+	// yet, and the user manages their own hooks per agent. Unlike cursor/gemini
+	// the failure mode isn't a bare .sh (pi runs the .ts extension itself), so to
+	// enable on Windows later: confirm the extension's runtime notify path
+	// resolves the .cmd / notify.mjs pair from SUPERSET_HOME_DIR, then drop this
+	// guard.
+	if (process.platform === "win32") return;
+
 	const extensionPath = getPiExtensionPath();
 	const content = getPiExtensionContent();
 	fs.mkdirSync(path.dirname(extensionPath), { recursive: true });

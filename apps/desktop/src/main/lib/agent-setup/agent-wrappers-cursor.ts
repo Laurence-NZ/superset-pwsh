@@ -121,6 +121,18 @@ export function createCursorAgentWrapper(): void {
 }
 
 export function createCursorHooksJson(): void {
+	// Windows port: don't merge Superset hooks into the user's global
+	// ~/.cursor/hooks.json on win32. getCursorHooksJsonContent emits a bare
+	// POSIX cursor-hook.sh path with no Windows (.cmd/cmd.exe) equivalent, so
+	// the command can't run on Windows anyway — merging it only churns a dotfile
+	// the user may track in git. Intentional; mirrors createClaudeSettingsJson.
+	// To support Windows later, give cursor-hook a platform-aware command + a
+	// .cmd entrypoint (see notify-hook's getManagedNotifyHookCommand + notify.cmd
+	// / notify.mjs) rather than deleting this guard — the user wires their own
+	// hook meanwhile (their ~/.cursor cursor-hook.ps1 entries). Note
+	// createCursorHookScript still runs, so cursor-hook.sh is still written.
+	if (process.platform === "win32") return;
+
 	const hookScriptPath = getCursorHookScriptPath();
 	const globalPath = getCursorGlobalHooksJsonPath();
 	const content = getCursorHooksJsonContent(hookScriptPath);

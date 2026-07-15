@@ -145,6 +145,18 @@ export function createGeminiWrapper(): void {
 }
 
 export function createGeminiSettingsJson(): void {
+	// Windows port: don't merge Superset hooks into the user's global
+	// ~/.gemini/settings.json on win32. getGeminiSettingsJsonContent emits a bare
+	// POSIX gemini-hook.sh path with no Windows (.cmd/cmd.exe) equivalent, so the
+	// command can't run on Windows anyway — merging it only churns a dotfile the
+	// user may track in git. Intentional; mirrors createClaudeSettingsJson. To
+	// support Windows later, give gemini-hook a platform-aware command + a .cmd
+	// entrypoint (see notify-hook's getManagedNotifyHookCommand + notify.cmd /
+	// notify.mjs) rather than deleting this guard — wire your own hook meanwhile
+	// as with Claude. Note createGeminiHookScript still runs, so gemini-hook.sh is
+	// still written.
+	if (process.platform === "win32") return;
+
 	const hookScriptPath = getGeminiHookScriptPath();
 	const globalPath = getGeminiSettingsJsonPath();
 	const content = getGeminiSettingsJsonContent(hookScriptPath);

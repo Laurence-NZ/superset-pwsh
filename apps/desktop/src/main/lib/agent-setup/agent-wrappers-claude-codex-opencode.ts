@@ -454,6 +454,15 @@ export function getCodexGlobalHooksJsonContent(
  * lifecycle events.
  */
 export function createCodexHooksJson(): void {
+	// Windows port: skip merging into the user's global ~/.codex/hooks.json on
+	// win32. Unlike cursor/gemini, codex's command IS Windows-adapted (it uses
+	// buildNotifyHookCommand -> notify.cmd), so this skip is by user preference,
+	// not because it's broken: the user manages their own ~/.codex hooks (as with
+	// their Claude setup) and we don't want to churn a tracked dotfile. Drop this
+	// guard to re-enable Superset-managed codex hooks on Windows. Intentional;
+	// mirrors createClaudeSettingsJson.
+	if (process.platform === "win32") return;
+
 	const notifyScriptPath = getNotifyScriptPath();
 	const globalPath = getCodexGlobalHooksJsonPath();
 	const content = getCodexGlobalHooksJsonContent(notifyScriptPath);
