@@ -9,6 +9,18 @@ import type {
 
 type PullRequestState = GitHubPullRequestNode["state"];
 
+// Don't link a branch to a closed/merged PR that hasn't been touched in over a
+// month — those are stale and irrelevant (e.g. an old dummy PR reusing a common
+// branch name like `develop`). Open PRs are always relevant, whatever their age.
+const STALE_PULL_REQUEST_LOOKBACK_MS = 30 * 24 * 60 * 60_000;
+
+function isStaleClosedPullRequest(
+	node: GitHubPullRequestNode,
+	cutoff: number,
+): boolean {
+	return node.state !== "OPEN" && Date.parse(node.updatedAt) < cutoff;
+}
+
 interface RestReview {
 	user?: {
 		login?: string | null;
@@ -125,6 +137,7 @@ function normalizePullRequestCandidates(
 	head: GitHubPullRequestHeadRef,
 ): GitHubPullRequestNode | null {
 	const requestedKey = headKey(head.owner, head.repo, head.branch);
+	const cutoff = Date.now() - STALE_PULL_REQUEST_LOOKBACK_MS;
 	return (
 		asArray(raw)
 			.map((item) => normalizePullRequest(item))
@@ -135,7 +148,8 @@ function normalizePullRequestCandidates(
 						node.headRepositoryOwner?.login,
 						node.headRepository?.name,
 						node.headRefName,
-					) === requestedKey,
+					) === requestedKey &&
+					!isStaleClosedPullRequest(node, cutoff),
 			) ?? null
 	);
 }

@@ -93,6 +93,66 @@ describe("GitHub pull request REST queries", () => {
 		]);
 	});
 
+	test("ignores a closed PR that hasn't been updated in over a month", async () => {
+		const { execGh } = createExecGh([
+			[
+				{
+					number: 123,
+					title: "stale closed pull request",
+					html_url: "https://github.com/example-org/example-repo/pull/123",
+					state: "closed",
+					draft: false,
+					merged_at: null,
+					updated_at: "2000-01-01T00:00:00Z",
+					head: {
+						ref: "develop",
+						sha: "old123",
+						repo: { name: "example-repo", owner: { login: "example-org" } },
+					},
+					base: { repo: { full_name: "example-org/example-repo" } },
+				},
+			],
+		]);
+
+		const result = await fetchPullRequestByHeadFromGh(
+			execGh,
+			{ owner: "example-org", name: "example-repo" },
+			{ owner: "example-org", repo: "example-repo", branch: "develop" },
+		);
+
+		expect(result).toBeNull();
+	});
+
+	test("still links a stale but open PR regardless of age", async () => {
+		const { execGh } = createExecGh([
+			[
+				{
+					number: 7,
+					title: "Long-lived feature",
+					html_url: "https://github.com/superset-sh/superset/pull/7",
+					state: "open",
+					draft: false,
+					merged_at: null,
+					updated_at: "2000-01-01T00:00:00Z",
+					head: {
+						ref: "feature/long",
+						sha: "abc123",
+						repo: { name: "superset", owner: { login: "superset-sh" } },
+					},
+					base: { repo: { full_name: "superset-sh/superset" } },
+				},
+			],
+		]);
+
+		const result = await fetchPullRequestByHeadFromGh(
+			execGh,
+			{ owner: "superset-sh", name: "superset" },
+			{ owner: "superset-sh", repo: "superset", branch: "feature/long" },
+		);
+
+		expect(result?.number).toBe(7);
+	});
+
 	test("filters REST head candidates by exact upstream repository", async () => {
 		const { execGh } = createExecGh([
 			[
