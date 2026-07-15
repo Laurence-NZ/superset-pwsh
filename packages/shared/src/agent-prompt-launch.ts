@@ -1,3 +1,5 @@
+import { getKnownShell, quotePowerShellLiteral } from "./shell";
+
 /**
  * Prompt transports define the small set of ways a CLI can receive prompt
  * payloads. Keep this enum intentionally small and add a new transport only
@@ -44,7 +46,78 @@ export function quoteSingleShell(value: string): string {
 	return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
-export function buildArgvCommand(argv: string[]): string {
+interface ShellCommandOptions {
+	shell?: string | null;
+}
+
+function isPowerShell(shell?: string | null): boolean {
+	if (!shell) return false;
+	const knownShell = getKnownShell(shell);
+	return knownShell === "powershell" || knownShell === "pwsh";
+}
+
+// Tokens made only of these characters (command names, flags, model ids,
+// bare Windows paths) parse literally in PowerShell and are left unquoted so
+// the launched line reads naturally. Anything else — spaces, quotes, $, ;,
+// etc. — gets single-quoted.
+const POWERSHELL_BARE_TOKEN = /^[A-Za-z0-9_./\\:=-]+$/;
+
+/**
+ * Quote a token for PowerShell. Single-line tokens use a `'…'` literal. A
+ * token containing newlines can't: the command is *typed* into the terminal,
+ * and a single-quoted literal would embed raw LF bytes, which PSReadLine reads
+ * as a line-accept and truncates the prompt. Emit a double-quoted string with
+ * backtick escapes instead so the whole command stays on one physical line and
+ * PowerShell rebuilds the newlines itself.
+ */
+export function quotePowerShellArg(value: string): string {
+	if (!value.includes("\n")) return quotePowerShellLiteral(value);
+	const escaped = value
+		.replaceAll("`", "``")
+		.replaceAll('"', '`"')
+		.replaceAll("$", "`$")
+		.replaceAll("\n", "`n");
+	return `"${escaped}"`;
+}
+
+function renderPowerShellToken(token: string): string {
+	return POWERSHELL_BARE_TOKEN.test(token) ? token : quotePowerShellArg(token);
+}
+
+/**
+ * PowerShell parses a bare quoted string as an expression, so a *quoted*
+ * command name only runs behind the `&` call operator (a bare name runs on its
+ * own). Split on the `&&` chain operator (native in pwsh 7+) so each command in
+ * the chain is handled independently.
+ */
+function buildPowerShellArgvCommand(argv: string[]): string {
+	const segments: string[][] = [[]];
+	for (const token of argv) {
+		if (token === "&&") {
+			segments.push([]);
+		} else {
+			const current = segments[segments.length - 1];
+			if (current) current.push(token);
+		}
+	}
+	return segments
+		.filter((tokens) => tokens.length > 0)
+		.map((tokens) => {
+			const rendered = tokens.map(renderPowerShellToken);
+			const command = rendered[0] ?? "";
+			const callOp =
+				command.startsWith("'") || command.startsWith('"') ? "& " : "";
+			return `${callOp}${rendered.join(" ")}`;
+		})
+		.join(" && ");
+}
+
+export function buildArgvCommand(
+	argv: string[],
+	options: ShellCommandOptions = {},
+): string {
+	if (isPowerShell(options.shell)) return buildPowerShellArgvCommand(argv);
+
 	// `&&` is a shell control operator, not an argument — emit it verbatim so a
 	// stored command like { command: "clear", args: ["&&", "claude"] } launches
 	// as `clear && claude` instead of `clear '&&' 'claude'`.
@@ -53,11 +126,24 @@ export function buildArgvCommand(argv: string[]): string {
 		.join(" ");
 }
 
-export function envOverlayPrefix(env: Record<string, string>): string {
-	const assignments = Object.entries(env).map(
-		([key, value]) => `${key}=${quoteSingleShell(value)}`,
-	);
-	return assignments.length > 0 ? `${assignments.join(" ")} ` : "";
+export function envOverlayPrefix(
+	env: Record<string, string>,
+	options: ShellCommandOptions = {},
+): string {
+	const entries = Object.entries(env);
+	if (entries.length === 0) return "";
+
+	if (isPowerShell(options.shell)) {
+		// `$env:KEY='value'; …; <command>` — PowerShell has no POSIX
+		// `KEY=value command` inline-assignment form.
+		return `${entries
+			.map(([key, value]) => `$env:${key}=${quotePowerShellArg(value)}`)
+			.join("; ")}; `;
+	}
+
+	return `${entries
+		.map(([key, value]) => `${key}=${quoteSingleShell(value)}`)
+		.join(" ")} `;
 }
 
 function joinCommand(command: string, suffix?: string): string {

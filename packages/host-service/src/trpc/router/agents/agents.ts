@@ -15,6 +15,8 @@ import { asc, eq } from "drizzle-orm";
 import { z } from "zod";
 import type { HostDb } from "../../../db";
 import { hostAgentConfigs } from "../../../db/schema";
+import { getTerminalBaseEnv } from "../../../terminal/env";
+import { resolveLaunchShell } from "../../../terminal/shell-launch";
 import { createTerminalSessionInternal } from "../../../terminal/terminal";
 import type { HostServiceContext } from "../../../types";
 import { protectedProcedure, router } from "../../index";
@@ -121,22 +123,28 @@ export function buildAgentCommandString(
 	rawPrompt: string,
 	modelArgs: string[] = [],
 	randomId: string = crypto.randomUUID(),
+	shell?: string | null,
 ): string {
 	const prompt = sanitizePromptForPty(rawPrompt);
 	const baseArgv = [config.command, ...config.args, ...modelArgs];
 
 	if (prompt === "") {
-		return buildArgvCommand(baseArgv);
+		return buildArgvCommand(baseArgv, { shell });
 	}
 
 	if (config.promptTransport === "argv") {
 		// Plain quoted positional, not the shared "$(cat <<…)" form: the command
 		// is typed into the user's configured shell, and fish has no heredocs.
-		return buildArgvCommand([...baseArgv, ...config.promptArgs, prompt]);
+		return buildArgvCommand([...baseArgv, ...config.promptArgs, prompt], {
+			shell,
+		});
 	}
 
+	// ponytail: stdin transport still emits a POSIX heredoc (no PowerShell form).
+	// Only argv-transport agents (e.g. claude) are wired for pwsh; add a pwsh
+	// stdin path if a stdin agent needs to launch on Windows.
 	return buildPromptCommandString({
-		command: buildArgvCommand([...baseArgv, ...config.promptArgs]),
+		command: buildArgvCommand([...baseArgv, ...config.promptArgs], { shell }),
 		transport: "stdin",
 		prompt,
 		randomId,
@@ -254,12 +262,18 @@ async function runTerminalAgent(
 	const prompt = buildAttachmentBlock(input.prompt, resolvedAttachments);
 	const modelArgs = buildAgentModelArgs(config.presetId, input.model);
 	const effortArgs = buildAgentEffortArgs(config.presetId, input.effort);
-	const command = buildAgentCommandString(config, prompt, [
-		...modelArgs,
-		...effortArgs,
-	]);
+	// Quote/invoke for the shell the terminal will actually launch (pwsh on
+	// Windows needs the `&` call operator; see buildArgvCommand).
+	const shell = resolveLaunchShell(getTerminalBaseEnv());
+	const command = buildAgentCommandString(
+		config,
+		prompt,
+		[...modelArgs, ...effortArgs],
+		undefined,
+		shell,
+	);
 	const modelEnv = buildAgentModelEnv(config.presetId, input.model);
-	const fullCommand = `${envOverlayPrefix({ ...config.env, ...modelEnv })}${command}`;
+	const fullCommand = `${envOverlayPrefix({ ...config.env, ...modelEnv }, { shell })}${command}`;
 
 	const terminalId = crypto.randomUUID();
 	const result = await createTerminalSessionInternal({

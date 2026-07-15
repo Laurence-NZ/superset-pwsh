@@ -1,6 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import {
+	buildArgvCommand,
 	buildPromptCommandString,
+	envOverlayPrefix,
 	sanitizePromptForPty,
 } from "./agent-prompt-launch";
 
@@ -49,6 +51,66 @@ describe("sanitizePromptForPty", () => {
 
 	it("returns an empty string for an all-control-character prompt", () => {
 		expect(sanitizePromptForPty("\x1b\x07\x00")).toBe("");
+	});
+});
+
+describe("buildArgvCommand", () => {
+	it("uses POSIX single-quoting by default", () => {
+		expect(buildArgvCommand(["claude", "build a boat"])).toBe(
+			"'claude' 'build a boat'",
+		);
+	});
+
+	it("leaves bare command/args unquoted, quotes only what needs it (pwsh)", () => {
+		expect(
+			buildArgvCommand(["claude", "build a boat"], { shell: "pwsh.exe" }),
+		).toBe("claude 'build a boat'");
+	});
+
+	it("escapes single quotes the PowerShell way and splits on &&", () => {
+		expect(
+			buildArgvCommand(["clear", "&&", "claude", "it's fine"], {
+				shell: "powershell",
+			}),
+		).toBe("clear && claude 'it''s fine'");
+	});
+
+	it("wraps a multiline prompt as a one-line backtick-escaped string (pwsh)", () => {
+		expect(
+			buildArgvCommand(["claude", "build a boat\nwith sails"], {
+				shell: "pwsh",
+			}),
+		).toBe('claude "build a boat`nwith sails"');
+	});
+
+	it("escapes backtick, double-quote, and $ in a multiline pwsh token", () => {
+		expect(
+			buildArgvCommand(["claude", 'a\n$x `y "z"'], { shell: "pwsh" }),
+		).toBe('claude "a`n`$x ``y `"z`""');
+	});
+
+	it("prefixes the & call operator when the command name is quoted (pwsh)", () => {
+		expect(
+			buildArgvCommand(["C:\\Program Files\\cli\\claude.exe", "go"], {
+				shell: "pwsh",
+			}),
+		).toBe("& 'C:\\Program Files\\cli\\claude.exe' go");
+	});
+});
+
+describe("envOverlayPrefix", () => {
+	it("emits POSIX inline assignments by default", () => {
+		expect(envOverlayPrefix({ FOO: "bar" })).toBe("FOO='bar' ");
+	});
+
+	it("emits $env: assignments for PowerShell", () => {
+		expect(envOverlayPrefix({ FOO: "bar" }, { shell: "pwsh" })).toBe(
+			"$env:FOO='bar'; ",
+		);
+	});
+
+	it("returns empty string for no env", () => {
+		expect(envOverlayPrefix({}, { shell: "pwsh" })).toBe("");
 	});
 });
 

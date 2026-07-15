@@ -81,7 +81,7 @@ function quotePosixShellLiteral(value: string): string {
 	return `'${value.replaceAll("'", `'"'"'`)}'`;
 }
 
-function quotePowerShellLiteral(value: string): string {
+export function quotePowerShellLiteral(value: string): string {
 	return `'${value.replaceAll("'", "''")}'`;
 }
 
