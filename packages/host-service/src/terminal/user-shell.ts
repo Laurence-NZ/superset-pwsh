@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import os from "node:os";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 type ShellEnvSource = Record<string, string | undefined>;
 
@@ -135,15 +135,27 @@ function discoverPwsh7(env: ShellEnvSource): string | null {
 			if (trimmed) candidates.push(join(trimmed, "pwsh.exe"));
 		}
 	}
+	// Store/MSIX pwsh is only ever exposed via the WindowsApps App Execution
+	// Alias. Add it explicitly so discovery works even when the packaged app's
+	// PATH omits WindowsApps (Explorer-launched builds carry a narrower PATH
+	// than a dev pwsh terminal).
+	const localAppData = getEnvCaseInsensitive(env, "LOCALAPPDATA");
+	if (localAppData) {
+		candidates.push(join(localAppData, "Microsoft", "WindowsApps", "pwsh.exe"));
+	}
 
 	for (const candidate of candidates) {
 		const name = basename(candidate).toLowerCase();
 		if (name !== "pwsh.exe" && name !== "pwsh") continue;
-		if (!existsSync(candidate)) continue;
+		// App Execution Aliases (Store/MSIX pwsh) are APPEXECLINK reparse points
+		// living in a WindowsApps dir: existsSync() reports false but the exe
+		// runs fine. Probe those directly; stat-gate every other candidate so a
+		// missing pwsh isn't a wasted spawn.
+		const isAppExecAlias =
+			basename(dirname(candidate)).toLowerCase() === "windowsapps";
+		if (!isAppExecAlias && !existsSync(candidate)) continue;
 		if (pwshMajorVersion(candidate) >= 7) return candidate;
 	}
-	// ponytail: skip Get-AppxPackage EPERM enumeration for Store-only installs;
-	// add if a machine has pwsh solely as a WindowsApps package.
 	return null;
 }
 
