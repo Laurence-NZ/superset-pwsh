@@ -255,6 +255,14 @@ export function getClaudeGlobalSettingsJsonContent(
  * matching the approach used for Cursor, Gemini, Droid, and Mastra.
  */
 export function createClaudeSettingsJson(): void {
+	// Windows port: don't touch the user's global ~/.claude/settings.json.
+	// Windows users wire their own notify hook (bash superset-notify.sh ->
+	// $SUPERSET_HOME_DIR/hooks/notify.sh), so injecting our managed cmd.exe
+	// hooks just duplicates the POST and leaves a permanent dirty diff in
+	// dotfiles that track settings.json. notify.sh itself is still written by
+	// createNotifyScript, which the user's bridge depends on.
+	if (process.platform === "win32") return;
+
 	const notifyScriptPath = getNotifyScriptPath();
 	const globalPath = getClaudeGlobalSettingsJsonPath();
 	const content = getClaudeGlobalSettingsJsonContent(notifyScriptPath);
