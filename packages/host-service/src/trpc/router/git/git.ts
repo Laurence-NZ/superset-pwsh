@@ -17,6 +17,7 @@ import type {
 	PullRequestReviewThread,
 	PullRequestState,
 } from "./types";
+import { scheduleBaseRefFetch } from "./utils/base-ref-freshness";
 import { gitConfigWrite } from "./utils/config-write";
 import {
 	getChangedFilesForDiff,
@@ -513,6 +514,69 @@ export const gitRouter = router({
 				currentBranch: isDetached ? null : currentBranch,
 				defaultBranch,
 			};
+		}),
+
+	// ───────────────────────────────────────────────────────────────────────
+	// STOPGAP (Windows port branch only) — DELETE ON MERGE.
+	//
+	// Backs the temporary "commits to pull" (↓N) badge in the v2 dashboard
+	// sidebar (see the `useCommitsToPull` renderer hook + the badge JSX in
+	// DashboardSidebarExpandedWorkspaceRow). It exists only until upstream/main
+	// ships a proper ahead/behind indicator in the sidebar; when that lands,
+	// remove this procedure, the hook, and the badge together.
+	//
+	// It mirrors getBranchSyncStatus.pullCount but ALSO schedules a background
+	// fetch of the branch's upstream, so the count converges on the real remote
+	// state over repeated polls (getBranchSyncStatus reads local refs only).
+	// Deliberately NOT folded into getBranchSyncStatus so it can be reverted
+	// without touching a shared procedure.
+	// ───────────────────────────────────────────────────────────────────────
+	getCommitsToPull: queryProcedure
+		.meta({ timeoutMs: 30_000 })
+		.input(z.object({ workspaceId: z.string() }))
+		.query(async ({ ctx, input }) => {
+			const worktreePath = resolveWorktreePath(ctx, input.workspaceId);
+			const git = await ctx.git(worktreePath);
+
+			let upstream = "";
+			try {
+				upstream = (
+					await git.raw(["rev-parse", "--abbrev-ref", "@{upstream}"])
+				).trim();
+			} catch {
+				// No upstream configured — nothing to pull.
+				return { pullCount: 0 };
+			}
+
+			// Keep the upstream ref fresh in the background: coalesced, TTL-throttled
+			// (~5 min), never throws. The count below reads the ref as it stands now;
+			// each poll's fetch is picked up by the next poll, so intermittent polling
+			// converges on the true remote state without blocking this read.
+			const slash = upstream.indexOf("/");
+			if (slash > 0) {
+				scheduleBaseRefFetch(git, worktreePath, {
+					remote: upstream.slice(0, slash),
+					branch: upstream.slice(slash + 1),
+				});
+			}
+
+			let pullCount = 0;
+			try {
+				const counts = (
+					await git.raw([
+						"rev-list",
+						"--left-right",
+						"--count",
+						"@{upstream}...HEAD",
+					])
+				).trim();
+				const [pullStr] = counts.split(/\s+/);
+				pullCount = Number.parseInt(pullStr || "0", 10);
+			} catch {
+				// Malformed ref / detached — treat as nothing to pull.
+			}
+
+			return { pullCount };
 		}),
 
 	getPullRequest: queryProcedure

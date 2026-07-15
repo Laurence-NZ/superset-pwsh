@@ -6,7 +6,8 @@ import {
 	useEffect,
 	useRef,
 } from "react";
-import { HiMiniMinus, HiMiniXMark } from "react-icons/hi2";
+import { HiMiniArrowDown, HiMiniMinus, HiMiniXMark } from "react-icons/hi2";
+import { useCommitsToPull } from "renderer/hooks/host-service/useCommitsToPull";
 import type { DiffStats } from "renderer/hooks/host-service/useDiffStats";
 import { HotkeyLabel } from "renderer/hotkeys";
 import { electronTrpc } from "renderer/lib/electron-trpc";
@@ -89,6 +90,14 @@ export const DashboardSidebarExpandedWorkspaceRow = forwardRef<
 		const showsStandaloneActiveStripe = accentColor == null;
 		const localRef = useRef<HTMLDivElement>(null);
 		const openUrl = electronTrpc.external.openUrl.useMutation();
+
+		// STOPGAP (Windows port branch only) — DELETE ON MERGE. Temporary "commits
+		// to pull" indicator until upstream/main ships a real ahead/behind indicator
+		// in the v2 sidebar. Remove this line, the ↓N badge below, the
+		// useCommitsToPull hook, and the git.getCommitsToPull host-service procedure
+		// together. Sourced from the host-service (the layer that serves the v2
+		// sidebar), so it works for both main and worktree workspaces.
+		const behind = useCommitsToPull(workspace.id);
 
 		useEffect(() => {
 			if (isActive) {
@@ -260,13 +269,34 @@ export const DashboardSidebarExpandedWorkspaceRow = forwardRef<
 									{creationStatusText}
 								</span>
 							) : (
-								diffStats &&
-								(diffStats.additions > 0 || diffStats.deletions > 0) && (
-									<DashboardSidebarWorkspaceDiffStats
-										additions={diffStats.additions}
-										deletions={diffStats.deletions}
-										isActive={isActive}
-									/>
+								(behind > 0 ||
+									(diffStats &&
+										(diffStats.additions > 0 || diffStats.deletions > 0))) && (
+									<div className="flex items-center gap-1.5 group-hover:hidden">
+										{/* STOPGAP (Windows port) — DELETE ON MERGE. See useCommitsToPull above. */}
+										{behind > 0 && (
+											<span
+												title={`${behind} commit${behind === 1 ? "" : "s"} to pull from remote`}
+												className={cn(
+													"flex shrink-0 items-center font-mono text-[10px] leading-none tabular-nums",
+													isActive
+														? "text-violet-400"
+														: "text-muted-foreground",
+												)}
+											>
+												<HiMiniArrowDown className="size-2.5" />
+												{behind}
+											</span>
+										)}
+										{diffStats &&
+											(diffStats.additions > 0 || diffStats.deletions > 0) && (
+												<DashboardSidebarWorkspaceDiffStats
+													additions={diffStats.additions}
+													deletions={diffStats.deletions}
+													isActive={isActive}
+												/>
+											)}
+									</div>
 								)
 							)}
 							{!isPending && (
