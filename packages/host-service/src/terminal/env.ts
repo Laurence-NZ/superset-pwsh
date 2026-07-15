@@ -192,8 +192,13 @@ export function buildV2TerminalEnv(
 
 	env.SUPERSET_TERMINAL_ID = terminalId;
 	env.SUPERSET_WORKSPACE_ID = workspaceId;
-	env.SUPERSET_WORKSPACE_PATH = workspacePath;
-	env.SUPERSET_ROOT_PATH = rootPath;
+	// repoPath is stored POSIX-normalized in the DB but worktreePath comes from
+	// git as native. On Windows, force both to backslashes so setup/teardown
+	// scripts joining these with `\...` literals don't emit mixed separators.
+	const toNativePath = (p: string) =>
+		process.platform === "win32" ? p.replaceAll("/", "\\") : p;
+	env.SUPERSET_WORKSPACE_PATH = toNativePath(workspacePath);
+	env.SUPERSET_ROOT_PATH = toNativePath(rootPath);
 	env.SUPERSET_ENV = supersetEnv;
 	env.SUPERSET_AGENT_HOOK_PORT = agentHookPort;
 	env.SUPERSET_AGENT_HOOK_VERSION = agentHookVersion;

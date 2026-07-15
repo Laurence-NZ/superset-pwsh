@@ -417,6 +417,8 @@ describe("terminal base env preservation", () => {
 // ── buildV2TerminalEnv ───────────────────────────────────────────────
 
 describe("buildV2TerminalEnv", () => {
+	const nativePath = (p: string) =>
+		process.platform === "win32" ? p.replaceAll("/", "\\") : p;
 	const baseParams = {
 		baseEnv: {
 			HOME: "/Users/test",
@@ -446,8 +448,9 @@ describe("buildV2TerminalEnv", () => {
 			PWD: "/tmp/workspace",
 			SUPERSET_TERMINAL_ID: "term-1",
 			SUPERSET_WORKSPACE_ID: "ws-1",
-			SUPERSET_WORKSPACE_PATH: "/tmp/workspace",
-			SUPERSET_ROOT_PATH: "/tmp/repo",
+			// win32 normalizes these to backslashes; POSIX passes through
+			SUPERSET_WORKSPACE_PATH: nativePath("/tmp/workspace"),
+			SUPERSET_ROOT_PATH: nativePath("/tmp/repo"),
 			SUPERSET_ENV: "production",
 			SUPERSET_AGENT_HOOK_PORT: "51741",
 			SUPERSET_AGENT_HOOK_VERSION: "2",
