@@ -60,7 +60,7 @@ export const BUILTIN_TERMINAL_AGENTS = [
 	createBuiltinTerminalAgent({
 		id: "claude",
 		label: "Claude",
-		description: "In Dario we trust.",
+		description: "Dario take the wheel!",
 		command: "claude --dangerously-skip-permissions",
 		includeInDefaultTerminalPresets: true,
 	}),
@@ -76,8 +76,7 @@ export const BUILTIN_TERMINAL_AGENTS = [
 	createBuiltinTerminalAgent({
 		id: "codex",
 		label: "Codex",
-		description:
-			"OpenAI's coding agent for reading, modifying, and running code across tasks.",
+		description: "In Altman we trust.",
 		command: "codex --dangerously-bypass-approvals-and-sandbox",
 		promptCommand: "codex --dangerously-bypass-approvals-and-sandbox --",
 		includeInDefaultTerminalPresets: true,
@@ -132,7 +131,7 @@ export const BUILTIN_TERMINAL_AGENTS = [
 	createBuiltinTerminalAgent({
 		id: "cursor-agent",
 		label: "Cursor Agent",
-		description: "More than a mouse.",
+		description: "Cursor gonna curse.",
 		command: "cursor-agent",
 	}),
 	createBuiltinTerminalAgent({
