@@ -678,6 +678,7 @@ export const workspacesRouter = router({
 								localProject.id,
 								resolvedBranch,
 								worktreeBaseDir,
+								localProject.repoName,
 							);
 							mkdirSync(dirname(worktreePath), { recursive: true });
 
@@ -934,6 +935,7 @@ export const workspacesRouter = router({
 							localProject.id,
 							resolvedBranch,
 							worktreeBaseDir,
+							localProject.repoName,
 						);
 						mkdirSync(dirname(worktreePath), { recursive: true });
 

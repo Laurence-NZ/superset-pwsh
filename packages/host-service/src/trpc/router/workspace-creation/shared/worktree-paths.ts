@@ -31,19 +31,45 @@ export function normalizeWorktreeBaseDir(
 	return resolve(trimmed);
 }
 
+// Human-readable, filesystem-safe folder name for a project's worktrees.
+// `<repoName-slug>-<short-id>` reads at a glance and stays shorter than the
+// bare 36-char GUID (a win for Windows MAX_PATH). The 8-char GUID prefix keeps
+// it collision-safe and stable per project even when two repos share a name.
+export function projectDirName(
+	projectId: string,
+	repoName?: string | null,
+): string {
+	const slug = (repoName ?? "")
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, "-")
+		.replace(/^-+|-+$/g, "")
+		.slice(0, 32);
+	const shortId = projectId.slice(0, 8);
+	return slug ? `${slug}-${shortId}` : shortId;
+}
+
 export function projectWorktreesRoot(
 	projectId: string,
 	worktreeBaseDir?: string | null,
+	repoName?: string | null,
 ): string {
-	return resolve(worktreeBaseDir ?? defaultWorktreesRoot(), projectId);
+	return resolve(
+		worktreeBaseDir ?? defaultWorktreesRoot(),
+		projectDirName(projectId, repoName),
+	);
 }
 
 export function safeResolveWorktreePath(
 	projectId: string,
 	branchName: string,
 	worktreeBaseDir?: string | null,
+	repoName?: string | null,
 ): string {
-	const projectRoot = projectWorktreesRoot(projectId, worktreeBaseDir);
+	const projectRoot = projectWorktreesRoot(
+		projectId,
+		worktreeBaseDir,
+		repoName,
+	);
 	const worktreePath = resolve(projectRoot, branchName);
 	if (
 		worktreePath !== projectRoot &&
