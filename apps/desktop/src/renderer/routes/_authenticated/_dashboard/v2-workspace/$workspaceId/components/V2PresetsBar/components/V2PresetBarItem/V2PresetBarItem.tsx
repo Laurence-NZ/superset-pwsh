@@ -1,4 +1,5 @@
 import type { HostAgentConfig } from "@superset/host-service/settings";
+import { getPresetById } from "@superset/shared/host-agent-presets";
 import { Button } from "@superset/ui/button";
 import {
 	ContextMenu,
@@ -43,7 +44,15 @@ export function V2PresetBarItem({
 }: V2PresetBarItemProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const icon = resolveV2PresetIcon(preset, agents, isDark);
-	const label = preset.description || preset.name || "default";
+	// Resolve the description live from the builtin agent so edits to
+	// BUILTIN_TERMINAL_AGENTS take effect; the stored value is a stale seed-time
+	// copy with no edit UI. Fall back to the stored value for custom presets.
+	const agent = agents?.find((candidate) => candidate.id === preset.agentId);
+	const liveDescription = agent
+		? getPresetById(agent.presetId)?.description
+		: undefined;
+	const label =
+		liveDescription || preset.description || preset.name || "default";
 
 	const [{ isDragging }, drag] = useDrag(
 		() => ({

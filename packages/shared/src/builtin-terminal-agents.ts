@@ -60,8 +60,7 @@ export const BUILTIN_TERMINAL_AGENTS = [
 	createBuiltinTerminalAgent({
 		id: "claude",
 		label: "Claude",
-		description:
-			"Anthropic's coding agent for reading code, editing files, and running terminal workflows.",
+		description: "In Dario we trust.",
 		command: "claude --dangerously-skip-permissions",
 		includeInDefaultTerminalPresets: true,
 	}),
@@ -111,15 +110,13 @@ export const BUILTIN_TERMINAL_AGENTS = [
 	createBuiltinTerminalAgent({
 		id: "pi",
 		label: "Pi",
-		description:
-			"Minimal terminal coding harness for flexible coding workflows.",
+		description: "Absolutely maths.",
 		command: "pi",
 	}),
 	createBuiltinTerminalAgent({
 		id: "copilot",
 		label: "Copilot",
-		description:
-			"GitHub's coding agent for planning, editing, and building in your repo.",
+		description: "Devs love Microsoft!",
 		command: "copilot --allow-tool=write",
 		promptCommand: "copilot --allow-tool=write -i",
 		includeInDefaultTerminalPresets: true,
@@ -135,8 +132,7 @@ export const BUILTIN_TERMINAL_AGENTS = [
 	createBuiltinTerminalAgent({
 		id: "cursor-agent",
 		label: "Cursor Agent",
-		description:
-			"Cursor's coding agent for editing, running, and debugging code in parallel.",
+		description: "More than a mouse.",
 		command: "cursor-agent",
 	}),
 	createBuiltinTerminalAgent({
