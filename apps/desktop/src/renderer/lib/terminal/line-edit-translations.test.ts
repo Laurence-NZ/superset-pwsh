@@ -67,6 +67,21 @@ describe("translateLineEditChord", () => {
 		).toBe("\x1b\r");
 	});
 
+	it("maps Windows Ctrl+Arrow to VT word-jump sequences PSReadLine binds", () => {
+		expect(
+			translateLineEditChord(event({ key: "ArrowLeft", ctrlKey: true }), {
+				isMac: false,
+				isWindows: true,
+			}),
+		).toBe("\x1b[1;5D");
+		expect(
+			translateLineEditChord(event({ key: "ArrowRight", ctrlKey: true }), {
+				isMac: false,
+				isWindows: true,
+			}),
+		).toBe("\x1b[1;5C");
+	});
+
 	it("does not map plain Enter", () => {
 		expect(
 			translateLineEditChord(event({ key: "Enter" }), {

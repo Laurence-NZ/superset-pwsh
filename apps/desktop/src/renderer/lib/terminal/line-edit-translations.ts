@@ -53,8 +53,12 @@ export function translateLineEditChord(
 		if (key === "ArrowRight") return "\x1bf";
 	}
 	if (isWindows && onlyMod(event, "ctrl")) {
-		if (key === "ArrowLeft") return "\x1bb";
-		if (key === "ArrowRight") return "\x1bf";
+		// PSReadLine's default (Windows) edit mode binds word-jump to
+		// Ctrl+Left/Right, which expect the VT modifier sequences below. The
+		// emacs ESC+b/ESC+f form (used by the Mac Alt branch) is unbound there,
+		// so PSReadLine drops the ESC and inserts a literal "b"/"f".
+		if (key === "ArrowLeft") return "\x1b[1;5D";
+		if (key === "ArrowRight") return "\x1b[1;5C";
 	}
 	return null;
 }
