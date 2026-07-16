@@ -148,6 +148,9 @@ export function parseProcessTable(output: string): ProcessInfo[] {
  * suspended or background jobs. Fails closed (returns false) on any ps error.
  */
 export function hasRunningForegroundProcess(shellPid: number): boolean {
+	// Windows has no POSIX tty foreground-process-group concept and no `ps`;
+	// fail closed without attempting a spawn, matching readProcessTable's win32 guard.
+	if (process.platform === "win32") return false;
 	if (!isPositiveInteger(shellPid)) return false;
 
 	const result = spawnSync(
