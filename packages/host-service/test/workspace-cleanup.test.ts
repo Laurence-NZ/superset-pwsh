@@ -29,8 +29,14 @@ interface ContextSpec {
 	workspace?: WorkspaceRow;
 	project?: ProjectRow;
 	cloudDelete?: () => Promise<unknown>;
-	gitStatus?: { isClean: () => boolean };
+	gitStatus?: { isClean: () => boolean; current?: string };
 	revListCount?: string | (() => Promise<string>);
+	// `git config --get branch.<name>.merge` — present means the branch once
+	// tracked a remote (was pushed). Defaults to absent (throws).
+	upstreamConfigured?: boolean;
+	// Whether `git rev-parse @{upstream}` resolves. False means the tracking
+	// ref is gone (remote deleted on merge).
+	upstreamRefResolves?: boolean;
 	gitFactoryThrows?: boolean;
 	worktreeRemove?: () => Promise<unknown>;
 	// Porcelain `git worktree list` output read back after the remove attempt.
@@ -77,6 +83,14 @@ function makeCtx(spec: ContextSpec): HostServiceContext & {
 			status,
 			raw: mock(async (args: string[]) => {
 				if (args[0] === "rev-list") return await revList();
+				if (args[0] === "config") {
+					if (!spec.upstreamConfigured) throw new Error("key not found");
+					return "refs/heads/branch\n";
+				}
+				if (args[0] === "rev-parse") {
+					if (!spec.upstreamRefResolves) throw new Error("no upstream ref");
+					return "deadbeef\n";
+				}
 				if (args[0] === "worktree") {
 					return args[1] === "list"
 						? await worktreeList()
@@ -291,6 +305,47 @@ describe("workspaceCleanup.inspect", () => {
 		const caller = workspaceCleanupRouter.createCaller(ctx);
 		const result = await caller.inspect({ workspaceId: "ws-1" });
 		expect(result.hasChanges).toBe(false);
+		expect(result.hasUnpushedCommits).toBe(true);
+	});
+
+	test("suppresses unpushed warning when remote was deleted on merge", async () => {
+		// Branch was pushed (upstream configured) but its tracking ref is gone:
+		// squash-merged PR + deleted remote branch. rev-list counts the orphaned
+		// commits, but the work is upstream — don't warn.
+		const ctx = makeCtx({
+			...wsAndProject,
+			gitStatus: { isClean: () => true, current: "feature" },
+			revListCount: "2\n",
+			upstreamConfigured: true,
+			upstreamRefResolves: false,
+		});
+		const caller = workspaceCleanupRouter.createCaller(ctx);
+		const result = await caller.inspect({ workspaceId: "ws-1" });
+		expect(result.hasUnpushedCommits).toBe(false);
+	});
+
+	test("keeps unpushed warning for a never-pushed branch (no upstream)", async () => {
+		const ctx = makeCtx({
+			...wsAndProject,
+			gitStatus: { isClean: () => true, current: "feature" },
+			revListCount: "2\n",
+			upstreamConfigured: false,
+		});
+		const caller = workspaceCleanupRouter.createCaller(ctx);
+		const result = await caller.inspect({ workspaceId: "ws-1" });
+		expect(result.hasUnpushedCommits).toBe(true);
+	});
+
+	test("keeps unpushed warning when tracking ref still resolves (ahead of upstream)", async () => {
+		const ctx = makeCtx({
+			...wsAndProject,
+			gitStatus: { isClean: () => true, current: "feature" },
+			revListCount: "2\n",
+			upstreamConfigured: true,
+			upstreamRefResolves: true,
+		});
+		const caller = workspaceCleanupRouter.createCaller(ctx);
+		const result = await caller.inspect({ workspaceId: "ws-1" });
 		expect(result.hasUnpushedCommits).toBe(true);
 	});
 

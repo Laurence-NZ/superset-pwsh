@@ -112,6 +112,18 @@ export const workspaceCleanupRouter = router({
 					]);
 					const count = Number.parseInt(result.trim(), 10);
 					hasUnpushedCommits = Number.isFinite(count) && count > 0;
+					// A branch that had a configured upstream whose tracking ref is
+					// now gone was pushed and had its remote deleted on merge. Squash
+					// merges collapse the branch's commits into one new commit on the
+					// base, so the originals exist nowhere on any remote and
+					// `--not --remotes` counts them as unpushed — a false alarm. The
+					// work is upstream; don't warn.
+					if (
+						hasUnpushedCommits &&
+						(await wasPushedRemoteDeleted(git, status.current))
+					) {
+						hasUnpushedCommits = false;
+					}
 				} catch {
 					// Leave false — `rev-list` failure isn't a signal we can act on.
 				}
@@ -433,6 +445,33 @@ async function isRegisteredWorktree(
 	return parseWorktreeList(raw).some(
 		(w) => normalizeWorktreePath(w.path) === target,
 	);
+}
+
+// Distinguishes "pushed, then remote deleted on merge" from "never pushed".
+// Both leave `@{upstream}` unresolvable, so the tell is the surviving
+// `branch.<name>.merge` config: present means the branch once tracked a remote
+// (i.e. was pushed), so a missing tracking ref means the remote was deleted —
+// not that the work never left the machine.
+async function wasPushedRemoteDeleted(
+	git: Awaited<ReturnType<HostServiceContext["git"]>>,
+	branch: string | null | undefined,
+): Promise<boolean> {
+	if (!branch) return false;
+	try {
+		// `config --get` exits non-zero (throws) when no upstream was configured
+		// → the branch was never pushed, so genuinely-unpushed commits stand.
+		await git.raw(["config", "--get", `branch.${branch}.merge`]);
+	} catch {
+		return false;
+	}
+	try {
+		// `--verify --quiet` exits non-zero (throws) when the tracking ref is
+		// gone. Resolving fine means `--not --remotes` was already right.
+		await git.raw(["rev-parse", "--verify", "--quiet", "@{upstream}"]);
+		return false;
+	} catch {
+		return true;
+	}
 }
 
 // `branch --list` exits 0 whether or not the branch exists (empty output when
