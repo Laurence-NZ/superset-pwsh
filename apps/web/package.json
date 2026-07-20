@@ -4,6 +4,7 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
+		"test": "bun test src",
 		"build": "next build",
 		"clean": "git clean -xdf .cache .next .turbo node_modules",
 		"dev": "dotenv -e ../../.env -- bun run ../../scripts/dev-with-port.ts WEB_PORT 3000 next dev",
