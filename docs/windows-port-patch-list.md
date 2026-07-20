@@ -147,7 +147,8 @@ For **each** patch entry:
 
 ## W6 — V2 terminals default to PowerShell 7 (+ Store/MSIX pwsh discovery)
 
-- **Commits:** `668766fe6`
+- **Commits:** `668766fe6` (default-to-pwsh-7 + discovery),
+  `72e890ba6` (Store/MSIX WindowsApps App Execution Alias discovery)
 - **Override policy:** **LOCKED** (Windows shell selection).
 - **Invariant:** On win32, V2 terminals default to pwsh 7. Discovery includes
   the `%LOCALAPPDATA%\Microsoft\WindowsApps\pwsh.exe` App Execution Alias and
@@ -303,19 +304,59 @@ For **each** patch entry:
 ## W15 — `@parcel/watcher` pinned to the `windows` backend
 
 - **Commits:** `e030e7700`
-- **Override policy:** **LOCKED** (native focus-steal; can't be JS-hidden).
+- **Override policy:** **LOCKED** (native console-window spawn; can't be
+  JS-hidden).
 - **Why:** left to auto-select, `@parcel/watcher` probes for watchman from
-  *native* C++ (`WatchmanBackend.cc`) by spawning `cmd /c watchman …`; with
-  watchman absent that console process flashes a window and **steals foreground
-  focus** on every workspace watch start. The spawn is native — no JS
-  `windowsHide` / `child_process` patch can hide it — so forcing the backend is
-  the only fix.
-- **Invariant:** on win32, the `subscribe` options force `backend: "windows"`.
-- **Where:** `packages/workspace-fs/src/watch.ts` (in the `subscribe` options).
+  *native* C++ (`WatchmanBackend.cc`) by spawning
+  `cmd /c watchman --output-encoding=bser get-sockname`; with watchman absent
+  that spawn **pops a visible console window** on every fresh watch start —
+  which, being a brand-new window, grabs foreground focus (the focus-steal is a
+  side effect of the window appearing, not the defect itself). The command exits
+  1 and its output is binary (`bser`), which is why the flashed window looks
+  empty. The spawn is native — no JS `windowsHide` / `child_process` patch can
+  touch it — so forcing the backend (skipping the probe entirely) is the only
+  fix.
+- **Invariant:** on win32, the `subscribe` options force `backend: "windows"`
+  (native `ReadDirectoryChangesW`), skipping the watchman probe. No-op on
+  mac/linux (they keep fs-events/inotify auto-selection).
+- **Where:** `packages/workspace-fs/src/watch.ts` (in the `createWatcher`
+  `subscribe()` options).
 - **Scan for:** new `@parcel/watcher` `subscribe()` calls without the win32
   backend pin, or removal of the pin.
-- **Symptom if broken:** a `cmd.exe` window flashes on app/workspace open,
-  exiting code 1 with no visible output.
+- **Symptom if broken:** a `cmd.exe` window flashes and steals focus on
+  app/workspace open (and after any dev host-service restart), exiting code 1
+  with no visible output.
+- **Why on open, and why it seemed random:** the probe fires on **every fresh
+  `subscribe()` for a not-already-watched path**. `workspace-fs` keeps one
+  watcher per unique path (`watchers.get(absolutePath)` → `createWatcher` only
+  if absent), so an already-watched path is deduped — no re-probe. A *burst* of
+  new watch roots at app/workspace open (git-watcher root + per-worktree
+  `fs:watch` subscriptions) = the reliable "on open" flash. The "random" ones
+  were new watch roots started later: switching to a different workspace, a
+  watcher torn down and recreated, and — the big one in dev —
+  `electron-vite dev --watch` restarting host-service on every main/host-service
+  edit or HMR (fresh process → every path re-subscribes → probes fire again).
+- **Dead-ends (do NOT repeat):**
+  - **Not** a `child_process` / `windowsHide` problem. A global monkey-patch
+    defaulting `windowsHide: true` on every spawn (the W10 approach) does
+    **nothing** here — the watchman spawn is native C++, invisible to any JS
+    patch.
+  - **Not** node-pty / ConPTY. `useConptyDll: true` changed nothing; ConPTY is
+    headless and never hosts this.
+  - **Not** Git Credential Manager or the base-ref `git fetch`. GCM *does* also
+    flash on a cold credential cache, and disabling the base-ref fetch removed
+    one flash — but the real one survived, because it's the watchman probe.
+  - **Not** Windows Terminal's "default terminal application" setting (tested
+    conhost, no change).
+  - Env-gate testing is unreliable here: **turbo strips unknown env vars** from
+    task processes, so `SUPERSET_NO_*`-style flags never reach host-service.
+    Disable things in *code* to test, not via env.
+- **How it was finally caught:** a `Register-CimIndicationEvent` watcher on
+  `__InstanceCreationEvent ISA Win32_Process` logging every new process's full
+  command line + parent chain during app open. The chain was
+  `cmd.exe /c watchman … → host-service.js`, and `@parcel/watcher`'s
+  `WatchmanBackend.cc` was the only dep matching
+  `--output-encoding=bser get-sockname`. 
 
 ## W16 — Sweep stale `active` terminal sessions on win32 startup
 
@@ -426,6 +467,78 @@ For **each** patch entry:
 - **Scan for:** new foreground-process / process-group checks that assume POSIX
   semantics without a win32 guard.
 
+## W22 — Chain V2 *setup* commands with `&&` under pwsh 7
+
+- **Commits:** `6a26e800a`
+- **Override policy:** **LOCKED** (Windows shell semantics). Companion to **W7**,
+  but a different code path: W7 chains *agent-launch* commands, this chains the
+  *workspace-setup* command line.
+- **Why:** V2 terminals default to pwsh 7 (**W6**), which supports the `&&`
+  pipeline-chain operator. `buildSetupCommand` was emitting the noisy
+  per-command `; if ($?) { … }` failure-guard form for *all* PowerShell. Only
+  legacy Windows PowerShell 5.1 actually lacks `&&`, so pwsh 7 should join with
+  a plain `&&` like POSIX/cmd.
+- **Invariant:** `buildSetupCommand` only special-cases `knownShell ===
+  "powershell"` (Windows PowerShell 5.1) for the `$?`-guard chaining; `pwsh`
+  (and POSIX/cmd) join with `&&`.
+- **Where:** `packages/host-service/src/trpc/router/workspace-creation/shared/setup-terminal.ts`
+  (`buildSetupCommand`).
+- **Scan for:** changes to `buildSetupCommand` that revert pwsh to the
+  `$?`-guard form, or a new setup-command path that hard-joins with `&&` before
+  the shell is known / doesn't distinguish pwsh 7 from PowerShell 5.1.
+
+## W23 — Normalize Superset path env vars to native separators on win32
+
+- **Commits:** `2a8dae119`
+- **Override policy:** **LOCKED** (Windows path spelling). Sibling of **W9** —
+  same `buildV2TerminalEnv` choke point in the same file.
+- **Why:** `repoPath` is stored POSIX-normalized (forward slashes) in the DB
+  while `worktreePath` comes from git as native backslashes, so
+  `SUPERSET_ROOT_PATH` and `SUPERSET_WORKSPACE_PATH` disagreed on separators.
+  Setup/teardown scripts joining them with `\…` literals then emitted mixed
+  paths like `C:/repos/example-project\tests\…`. Cosmetic (Windows accepts both) but
+  confusing in logs and script output.
+- **Invariant:** on win32, `buildV2TerminalEnv` forces both
+  `SUPERSET_ROOT_PATH` and `SUPERSET_WORKSPACE_PATH` to all-backslash at the
+  single terminal-env choke point.
+- **Where:** `packages/host-service/src/terminal/env.ts` (`buildV2TerminalEnv`,
+  the `toNativePath` normalization).
+- **Scan for:** merge changes to `env.ts` that drop the win32 separator
+  normalization, or a new Superset path env var added without it.
+
+## W24 — Editor CLI shims resolve via shell in `spawnAsync` on win32
+
+- **Commits:** `12a9af165`
+- **Override policy:** **LOCKED** (Windows `.cmd`/`.bat` shim + PATHEXT
+  resolution).
+- **Why:** editor CLIs on Windows are `.cmd`/`.bat` shims (e.g. `code.cmd`); a
+  bare `spawn("code")` can't resolve them via `PATHEXT` and fails with `ENOENT`,
+  so every "Open in editor" button was broken on Windows — not just VS Code.
+- **Invariant:** on win32 `spawnAsync` spawns with `shell: true` +
+  `windowsHide: true`, manually quoting args (shell:true doesn't quote) to
+  preserve spaces, so the shim resolves through `cmd.exe`/PATHEXT.
+- **Where:** `apps/desktop/src/lib/trpc/routers/external/helpers.ts`
+  (`spawnAsync`).
+- **Scan for:** a new bare `spawn`/`execFile` of an editor/CLI shim name on
+  win32 without `shell: true`; removal of the `windowsHide`/quoting from
+  `spawnAsync`. (Overlaps **W10**'s `windowsHide` invariant.)
+
+## W25 — Accept pure-Alt hotkey binds in the recorder on Windows/Linux
+
+- **Commits:** `b4b8946ab`
+- **Override policy:** **LOCKED** (cross-platform modifier handling, but the bug
+  only bit non-Mac).
+- **Why:** the hotkey recorder only treated Alt as an app modifier on Mac, so
+  Windows-Terminal-style binds like `alt+shift+-` and `alt+arrow` were silently
+  dropped during capture on Windows/Linux.
+- **Invariant:** pure Alt (Alt without Ctrl) counts as an app modifier on every
+  platform — it isn't AltGr, so it's safe. `Ctrl+Alt` still requires Ctrl to
+  preserve the AltGr guard (on Windows/Linux AltGr masquerades as Ctrl+Alt).
+- **Where:** `apps/desktop/src/renderer/hotkeys/hooks/useRecordHotkeys/useRecordHotkeys.ts`
+  (`altIsAppModifier`).
+- **Scan for:** changes reverting Alt to a Mac-only app modifier, or a new
+  modifier-capture path that drops pure-Alt on non-Mac.
+
 ---
 
 # §2 — Features & fixes
@@ -463,3 +576,58 @@ notify the user and switch to theirs.
 - **Where:** `packages/host-service/src/trpc/router/workspace-cleanup/workspace-cleanup.ts`.
 - **Scan for:** upstream changes to the unpushed-commits / branch-sync warning
   logic that supersede this guard.
+
+## F3 — Custom builtin agent descriptions + live presets-bar resolution
+
+- **Commits:** `8815c3070` (feature + agent rule #12), `1d22b77c0` (reword
+  claude/cursor/codex copy)
+- **Override policy:** **OVERRIDABLE** (product copy, not Windows-specific). If
+  upstream reworks the builtin agent descriptions, notify the user — they'll
+  likely want upstream's copy. **Expect merge conflicts** in
+  `builtin-terminal-agents.ts` on any merge that touches those descriptions.
+- **What:** two things. (1) Changed the claude/copilot/cursor/pi builtin agent
+  descriptions in `BUILTIN_TERMINAL_AGENTS`. (2) Fixed the seed-once staleness
+  gotcha (AGENTS.md agent rule #12): the V2 presets-bar tooltip now resolves the
+  description **live** from the builtin agent
+  (`getPresetById(agent.presetId)?.description`) instead of reading the
+  stale seed-time copy stored on the `V2TerminalPresetRow`.
+- **Where:** `packages/shared/src/builtin-terminal-agents.ts` (the descriptions);
+  `apps/desktop/src/renderer/.../V2PresetsBar/components/V2PresetBarItem/V2PresetBarItem.tsx`
+  (live resolution).
+- **Scan for:** upstream editing the same builtin descriptions (conflict —
+  decide whose copy wins), or a refactor that reverts `V2PresetBarItem` to
+  reading the stored row description.
+
+## F4 — Ignore stale closed PRs when linking branches
+
+- **Commits:** `8e7d6a92b`
+- **Override policy:** **OVERRIDABLE** (genuine bug fix, not Windows-specific).
+  If upstream fixes the same false PR link, adopt theirs.
+- **What:** a branch was linked to *any* PR matching its head ref, so a
+  long-dead closed/merged PR reusing a common branch name (e.g. a dummy PR on
+  `develop`) surfaced in the v2 sidebar. Now closed/merged PRs untouched for over
+  a month are dropped at the per-head match; open PRs still link regardless of
+  age.
+- **Where:** `packages/host-service/src/runtime/pull-requests/utils/github-query/github-query.ts`
+  (`STALE_PULL_REQUEST_LOOKBACK_MS`, per-head match filter).
+- **Scan for:** upstream changes to the branch↔PR linking / head-ref match logic
+  that supersede this stale-PR filter.
+
+## F5 — Human-readable project worktree folder names
+
+- **Commits:** `33abbc627`
+- **Override policy:** **OVERRIDABLE**, but **behaviour-changing on all
+  platforms — flag if it ever feeds upstream.** Windows-*motivated* (shorter
+  paths help MAX_PATH) but affects macOS/Linux too, so it lives in §2, not §1.
+- **What:** the per-project worktree parent dir is named
+  `<repoName-slug>-<short8>` (e.g. `superset-3ec4ef4b`) instead of the bare
+  36-char project GUID — legible at a glance and shorter (helps Windows
+  `MAX_PATH`). Nothing parses the GUID back out of a path (worktree paths are
+  stored whole in SQLite and read opaquely), so this only affects **newly
+  created** worktrees; existing ones keep working from their stored paths.
+- **Where:** `packages/host-service/src/trpc/router/workspace-creation/shared/worktree-paths.ts`
+  (`projectDirName`); `packages/host-service/src/trpc/router/workspaces/workspaces.ts`
+  (passes `repoName`).
+- **Scan for:** upstream changing the worktree-path layout (conflict), or any
+  new code that tries to parse the project GUID back out of a worktree path
+  (would break on the slugged name).
