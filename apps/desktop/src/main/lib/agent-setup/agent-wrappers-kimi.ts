@@ -117,6 +117,14 @@ export function getKimiConfigTomlContent(existing: string): string {
 }
 
 export function createKimiConfigToml(): void {
+	// Windows port: skip merging into the user's global ~/.kimi-code/config.toml
+	// on win32. Like codex, kimi's command IS Windows-adapted (it uses
+	// getManagedNotifyHookCommand -> notify.cmd), so this skip is by user
+	// preference, not because it's broken: the user manages their own kimi hooks
+	// and we don't want to churn a tracked dotfile. Drop this guard to re-enable
+	// Superset-managed kimi hooks on Windows. Intentional; mirrors W11 injectors.
+	if (process.platform === "win32") return;
+
 	const configPath = getKimiConfigTomlPath();
 	const existing = fs.existsSync(configPath)
 		? fs.readFileSync(configPath, "utf-8")
