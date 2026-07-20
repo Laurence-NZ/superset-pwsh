@@ -1,6 +1,6 @@
 ---
 name: update-from-main
-description: "Use whenever about to merge upstream `main` into the local-only Windows-port branch (`crm-superset-port`) — 'update from main', 'pull in main', 'merge main', 'sync with main', or `/update-from-main`. Refreshes `main`, merges it into the current branch, re-verifies the applied Windows patch commits survived the merge, re-applies any that upstream refactors broke, and reports what to test locally. Records the pre-merge SHA so the user can revert. Does NOT trigger for ordinary feature merges, pushing (this branch is never pushed), or applying a brand-new Windows patch from scratch."
+description: "Use whenever about to merge upstream `main` into the local-only Windows-port branch (`windows-superset-port`) — 'update from main', 'pull in main', 'merge main', 'sync with main', or `/update-from-main`. Refreshes `main`, merges it into the current branch, re-verifies the applied Windows patch commits survived the merge, re-applies any that upstream refactors broke, and reports what to test locally. Records the pre-merge SHA so the user can revert. Does NOT trigger for ordinary feature merges, pushing (this branch is never pushed), or applying a brand-new Windows patch from scratch."
 ---
 
 # update-from-main
