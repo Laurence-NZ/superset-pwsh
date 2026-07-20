@@ -57,7 +57,11 @@ For **each** patch entry:
 
 ## W1 — Foundational native Windows x64 desktop port
 
-- **Commits:** `61132970e` (broad sweep — `git show 61132970e` for the full set)
+- **Commits:** `61132970e` (broad sweep — `git show 61132970e` for the full set);
+  `0ff4d94f4` (2026-07-20 merge: routed upstream's new `startKnownHostServices`
+  cloud-URL call site through `getMainApiUrl()` instead of the undefined
+  `mainEnv` — packaged-build URL sanitization choke point in
+  `apps/desktop/src/main/index.ts` / `desktop-runtime-flags.ts`)
 - **Override policy:** **LOCKED.** Upstream targets macOS/Linux; there is no
   upstream Windows port to defer to. Later, finer-grained W-entries refine and
   extend this base; verify them individually as they are migrated in.
@@ -230,19 +234,25 @@ For **each** patch entry:
 ## W11 — Skip agent global-dotfile hook injection on win32
 
 - **Commits:** `86ce750ab` (`createClaudeSettingsJson`), `8e5ba3be9`
-  (cursor/codex/gemini/pi)
+  (cursor/codex/gemini/pi), `052e0f837` (`createKimiConfigToml` — new upstream
+  injector guarded on the 2026-07-20 main merge)
 - **Override policy:** **LOCKED** (Windows-specific no-op).
 - **Invariant:** On win32 the dotfile hook injectors are no-ops:
   `createClaudeSettingsJson`, `createCodexHooksJson`, `createCursorHooksJson`,
-  `createGeminiSettingsJson`, `createPiExtension`. On Windows they'd emit a bare
-  POSIX `.sh` command (can't run) and churn a user-tracked dotfile every launch;
-  the user wires their own per-agent hooks. The paired `create*HookScript`
-  writers still run (the `SUPERSET_HOME_DIR/hooks/*.sh` scripts must stay).
-- **Where:** `apps/desktop/src/main/lib/agent-setup/agent-wrappers-claude-codex-opencode.ts`
-  and `agent-wrappers-{cursor,gemini,pi}.ts`.
+  `createGeminiSettingsJson`, `createPiExtension`, `createKimiConfigToml`. On
+  Windows they'd churn a user-tracked global dotfile every launch (and for the
+  non-Windows-adapted ones, emit a bare POSIX `.sh` command that can't run); the
+  user wires their own per-agent hooks. The paired `create*HookScript` /
+  `create*Wrapper` writers still run (the `SUPERSET_HOME_DIR/hooks/*.sh` scripts
+  must stay). Note: codex and kimi commands ARE Windows-adapted (they route
+  through `getManagedNotifyHookCommand` → `notify.cmd`), so their skip is by
+  user preference to avoid churning a tracked dotfile, not because it's broken.
+- **Where:** `apps/desktop/src/main/lib/agent-setup/agent-wrappers-claude-codex-opencode.ts`,
+  `agent-wrappers-{cursor,gemini,pi}.ts`, and `agent-wrappers-kimi.ts`.
 - **Scan for:** merge changes to these injectors that drop the win32 guard, or a
-  **new** agent's dotfile injector emitting a bare `.sh` command with no win32
-  guard (droid/mastra/vibe/amp share the latent bug, currently unused).
+  **new** agent's dotfile injector with no win32 guard (droid/mastra/vibe/amp
+  share the latent bug, currently unused). Kimi was the realized case: it landed
+  on the 2026-07-20 merge without a guard and was added here.
 - **Opt-in re-enable (standalone script):** since the app skips auto-inject on
   win32, users wire the Claude hooks on demand with
   `scripts/windows/setup-claude-notify.ps1` (`pwsh …`, documented in
@@ -600,7 +610,7 @@ notify the user and switch to theirs.
 - **Scan for:** upstream changes to the unpushed-commits / branch-sync warning
   logic that supersede this guard.
 
-## F3 — Custom builtin agent descriptions + live presets-bar resolution
+## F3 — Custom builtin agent descriptions
 
 - **Commits:** `8815c3070` (feature + agent rule #12), `1d22b77c0` (reword
   claude/cursor/codex copy)
@@ -608,18 +618,23 @@ notify the user and switch to theirs.
   upstream reworks the builtin agent descriptions, notify the user — they'll
   likely want upstream's copy. **Expect merge conflicts** in
   `builtin-terminal-agents.ts` on any merge that touches those descriptions.
-- **What:** two things. (1) Changed the claude/copilot/cursor/pi builtin agent
-  descriptions in `BUILTIN_TERMINAL_AGENTS`. (2) Fixed the seed-once staleness
-  gotcha (AGENTS.md agent rule #12): the V2 presets-bar tooltip now resolves the
-  description **live** from the builtin agent
-  (`getPresetById(agent.presetId)?.description`) instead of reading the
-  stale seed-time copy stored on the `V2TerminalPresetRow`.
-- **Where:** `packages/shared/src/builtin-terminal-agents.ts` (the descriptions);
-  `apps/desktop/src/renderer/.../V2PresetsBar/components/V2PresetBarItem/V2PresetBarItem.tsx`
-  (live resolution).
+- **What:** custom claude/copilot/cursor/pi builtin agent descriptions in
+  `BUILTIN_TERMINAL_AGENTS` ("Dario take the wheel!", "In Altman we trust.",
+  "Absolutely maths.", "Devs love Microsoft!", "Cursor gonna curse.").
+- **Where:** `packages/shared/src/builtin-terminal-agents.ts`.
 - **Scan for:** upstream editing the same builtin descriptions (conflict —
-  decide whose copy wins), or a refactor that reverts `V2PresetBarItem` to
-  reading the stored row description.
+  decide whose copy wins).
+- **DROPPED on the 2026-07-20 main merge — live presets-bar resolution:** F3
+  originally also fixed the seed-once staleness gotcha (AGENTS.md rule #12) by
+  resolving the presets-bar tooltip description **live** from the builtin agent
+  in `V2PresetBarItem.tsx`. Upstream refactored the presets-bar tooltip from
+  `HotkeyLabel` (label + hotkey) to a shortcut-only `HotkeyTooltip` that shows
+  **only the hotkey chip** — the description is no longer displayed in the
+  presets bar at all, so the live-resolution code became dead and was removed
+  (adopted upstream per the OVERRIDABLE policy; user notified). The custom
+  descriptions above are still shown wherever the builtin agent's description
+  surfaces elsewhere; rule #12's live-vs-stored guidance still applies to any
+  such surface.
 
 ## F4 — Ignore stale closed PRs when linking branches
 
