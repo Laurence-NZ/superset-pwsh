@@ -7,15 +7,20 @@ This should serve as a stop-gap until superset-sh officially adds support for Wi
 Every Windows-specific change (and the handful of unrelated bug fixes/features)
 is catalogued in [`docs/windows-port-patch-list.md`](docs/windows-port-patch-list.md).
 
-## Dependencies
+## Setup
 
-### To run
+1. **Install PowerShell 7** - this fork uses PowerShell 7 (`pwsh`) instead of
+   `cmd`
+   ([install guide](https://learn.microsoft.com/en-us/powershell/scripting/install/install-powershell-on-windows?view=powershell-7.6)).
+   - Only the **Store/MSIX package** version has been tested.
+   - `winget install --id Microsoft.PowerShell --source winget`
+2. **Download the installer** from the
+   [latest release](https://github.com/Laurence-NZ/superset-pwsh/releases/latest)
+   and run it.
 
-- **PowerShell 7** - this fork uses PowerShell 7 (`pwsh`) instead of `cmd`
-  ([install guide](https://learn.microsoft.com/en-us/powershell/scripting/install/install-powershell-on-windows?view=powershell-7.6)).
-  - Only the **Store/MSIX package** version has been tested.
+## Development
 
-### To develop
+### Dependencies
 
 - [Bun](https://bun.sh/)
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/)
@@ -23,14 +28,14 @@ is catalogued in [`docs/windows-port-patch-list.md`](docs/windows-port-patch-lis
 - Git for Windows (2.20+)
 - [GitHub CLI (`gh`)](https://cli.github.com/)
 
-### To build the desktop app
+To build the desktop app you also need:
 
 - Visual Studio Build Tools 2022
 - MSVC v143 C++ x64/x86 compiler tools
 - MSVC v143 C++ x64/x86 Spectre-mitigated libraries
 - Windows 10 or 11 SDK
 
-## Running Dev Mode
+### Running Dev Mode
 
 Start Docker Desktop first.
 
@@ -57,7 +62,7 @@ For the upstream contributor guide for more info:
 Windows use the `.ts` flow above). Repo structure and DB/migration conventions
 are in [`AGENTS.md`](AGENTS.md).
 
-## Claude Status notifications (recommended)
+### Claude Status notifications (recommended)
 
 The desktop app skips auto-registering its Claude Code notify hooks on Windows
 (see W11 in the patch list), so Claude Code session/tool activity won't surface
@@ -73,7 +78,7 @@ entries that call it into `~/.claude/settings.json`. Idempotent; backs up
 `settings.json` first, and manages only the bridge entries — every other hook
 and setting is left untouched.
 
-## Building
+### Building
 
 ```powershell
 bun i
