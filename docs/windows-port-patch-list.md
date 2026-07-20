@@ -309,6 +309,12 @@ For **each** patch entry:
   (`persistAll`); `.../terminal-runtime.ts`.
 - **Scan for:** removal of the `pagehide` / `visibilitychange` persist hooks, or
   a refactor that reverts persistence to detach-only.
+- **Testing caveat — judge restore fidelity in a packaged build, not dev.** In
+  `dev:desktop`, `electron-vite dev --watch` restarts the renderer/host-service
+  on HMR, so `persistAll` may not fire cleanly at close and a stale normal-buffer
+  snapshot can overwrite the alt-screen frame — the tombstone then restores a
+  bare shell prompt instead of the TUI. This is a dev artifact, not a W13 break;
+  verify snapshot restore from an installed build (single clean quit).
 
 ## W14 — `fs.rm` backstop after `git worktree remove` on Windows
 
