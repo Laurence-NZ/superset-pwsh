@@ -14,7 +14,13 @@ is catalogued in [`docs/windows-port-patch-list.md`](docs/windows-port-patch-lis
    ([install guide](https://learn.microsoft.com/en-us/powershell/scripting/install/install-powershell-on-windows?view=powershell-7.6)).
    - Only the **Store/MSIX package** version has been tested.
    - `winget install --id Microsoft.PowerShell --source winget`
-2. **Download the installer** from the
+2. **Install Git for Windows** (2.20+) - the app shells out to `git` for all
+   worktree/repo operations and won't function without it on your PATH.
+   - `winget install --id Git.Git --source winget`
+   - Also install [GitHub CLI (`gh`)](https://cli.github.com/). It improves GitHub
+     auth and PR flows, but the app falls back to a built-in GitHub client if
+     it's absent.
+3. **Download the installer** from the
    [latest release](https://github.com/Laurence-NZ/superset-pwsh/releases/latest)
    and run it.
 
