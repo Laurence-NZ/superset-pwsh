@@ -1,7 +1,5 @@
 import { isV2OnlyUser } from "@superset/shared/v2-only-user";
-import { env } from "renderer/env.renderer";
 import { authClient } from "renderer/lib/auth-client";
-import { useV2LocalOverrideStore } from "renderer/stores/v2-local-override";
 
 /**
  * True for accounts created on/after V2_ONLY_USER_CUTOFF — these users
@@ -14,8 +12,8 @@ export function useIsV2OnlyUser(): boolean {
 
 /** Returns whether v2 is currently active for this user. */
 export function useIsV2CloudEnabled(): boolean {
-	const v2Only = useIsV2OnlyUser();
-	const optInV2 = useV2LocalOverrideStore((s) => s.optInV2);
-	// Dev builds default to v2; an explicit opt-out (optInV2 === false) still wins.
-	return optInV2 ?? (v2Only || env.NODE_ENV === "development");
+	// ponytail: Windows fork forces v2 on for everyone and hides the opt-out
+	// toggle (see ExperimentalSettings). v1 is untested on Windows. Restore the
+	// opt-in/env logic if v1 support is ever wanted here.
+	return true;
 }

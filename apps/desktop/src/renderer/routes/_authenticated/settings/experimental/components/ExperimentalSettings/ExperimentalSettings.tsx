@@ -147,6 +147,9 @@ export function ExperimentalSettings({
 						<Switch
 							id="superset-v2"
 							checked={isV2CloudEnabled}
+							// Windows fork: v2 is forced on (see useIsV2CloudEnabled) and v1
+							// is untested on Windows, so the opt-out is locked on.
+							disabled
 							onCheckedChange={(enabled) => {
 								track("surface_toggled", {
 									from: isV2CloudEnabled ? "v2" : "v1",

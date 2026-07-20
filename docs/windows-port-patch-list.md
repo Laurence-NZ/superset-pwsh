@@ -666,3 +666,24 @@ notify the user and switch to theirs.
 - **Scan for:** upstream reintroducing a one-shot `workspace.get` gate on this
   button, or any new gate that reads a non-live source for `worktreePath`
   instead of the `useHostWorkspaces` row.
+
+## F6 — Force v2 on and lock the "Try Superset v2" opt-out toggle
+
+- **Commits:** `7c9abbfd8`
+- **Override policy:** **LOCKED for this fork.** This fork is v2-only on Windows
+  (v1 untested), so we never want the opt-out. Not a candidate to switch to
+  upstream — upstream deliberately keeps v1/v2 selectable.
+- **What:** `useIsV2CloudEnabled` unconditionally returns `true` (was: opt-in
+  store value, falling back to v2-only-user / dev-mode), so every v2/v1 gate
+  across the app resolves to v2 regardless of the persisted opt-out or build
+  type (dev *and* packaged). The Experimental settings "Try Superset v2" switch
+  stays visible but is rendered `disabled`; since the hook is hard-wired on, it
+  reads as on and can't be turned off (its `onCheckedChange` is now dead code,
+  kept only to minimise the diff).
+- **Where:** `apps/desktop/src/renderer/hooks/useIsV2CloudEnabled.ts`
+  (`useIsV2CloudEnabled` returns `true`);
+  `apps/desktop/src/renderer/routes/_authenticated/settings/experimental/components/ExperimentalSettings/ExperimentalSettings.tsx`
+  (`disabled` on the `superset-v2` `Switch`).
+- **Scan for:** upstream reworking `useIsV2CloudEnabled` (e.g. new signature or
+  new opt-out source) — re-apply the forced `true`; a merge that drops the
+  `disabled` prop from the `superset-v2` switch — re-pin it.
