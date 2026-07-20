@@ -1,4 +1,4 @@
-# Win-Superset - Unofficial Superset Windows Fork
+# superset-pwsh — Unofficial Superset Windows Fork
 
 Yet another unofficial native-Windows fork of [Superset](https://github.com/superset-sh/superset).
 

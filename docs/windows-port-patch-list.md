@@ -1,4 +1,4 @@
-# Windows Port — Patch List
+# superset-pwsh — Windows Port Patch List
 
 Single source of truth for everything this branch (`windows-superset-port`) carries
 on top of upstream `main`. The `/update-from-main` skill walks this list after

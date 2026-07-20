@@ -1,4 +1,4 @@
-# Existing Windows Fork — Baseline Patch Log
+# superset-pwsh — Existing Windows Fork Baseline Patch Log
 
 Frozen, granular record of everything the **foundational native-Windows port**
 did (patch-list entry **W1**), migrated verbatim from the now-removed
