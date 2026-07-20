@@ -1,17 +1,17 @@
 ---
-name: update-from-main
-description: "Use whenever about to merge upstream `main` into the local-only Windows-port branch (`windows-superset-port`) — 'update from main', 'pull in main', 'merge main', 'sync with main', or `/update-from-main`. Refreshes `main`, merges it into the current branch, re-verifies the applied Windows patch commits survived the merge, re-applies any that upstream refactors broke, and reports what to test locally. Records the pre-merge SHA so the user can revert. Does NOT trigger for ordinary feature merges, pushing (this branch is never pushed), or applying a brand-new Windows patch from scratch."
+name: merge-upstream
+description: "Use whenever about to merge upstream `main` into this fork's branch — 'update from main', 'pull in main', 'merge main', 'sync with main', 'merge upstream', or `/merge-upstream`. Fetches upstream `origin/main`, merges it into the current branch, re-verifies the applied Windows patch commits survived the merge, re-applies any that upstream refactors broke, and reports what to test locally. Records the pre-merge SHA so the user can revert. Does NOT trigger for ordinary feature merges or applying a brand-new Windows patch from scratch."
 ---
 
-# update-from-main
+# merge-upstream
 
-Merge upstream `main` into the Windows-port branch without losing the applied
-Windows adaptations. The definitive list of those adaptations — plus the
-unrelated bug fixes/features this branch carries — is
-`docs/windows-port-patch-list.md`: commit-keyed patch entries (§1 Windows
-support, §2 features & fixes), each with an invariant, the files it touches, and
-a **Scan for** signature. Its **How to walk this list** section is the
-authoritative per-entry procedure. Narrative context is the "Windows port"
+Merge upstream `main` (`origin/main`, the `superset-sh/superset` remote) into the
+current branch without losing the applied Windows adaptations. The definitive
+list of those adaptations — plus the unrelated bug fixes/features this fork
+carries — is `docs/windows-port-patch-list.md`: commit-keyed patch entries (§1
+Windows support, §2 features & fixes), each with an invariant, the files it
+touches, and a **Scan for** signature. Its **How to walk this list** section is
+the authoritative per-entry procedure. Narrative context is the "Windows port"
 section of `AGENTS.md`. Read the patch list before merging.
 
 Run every step from the repo root. Use the `ask_user` tool for any question.
@@ -25,27 +25,26 @@ user to re-run the skill to pull the rest. `--all` merges everything in one go.
 
 - `git status --porcelain` must be empty. If dirty, stop and tell the user to commit/stash first.
 - Capture and **print to the user** the current branch and HEAD so they can revert:
-  - `git branch --show-current` (this is the Windows-port branch — return to it in step 3)
+  - `git branch --show-current`
   - `git rev-parse HEAD` → this is the pre-merge SHA.
 - Tell the user plainly: *"To undo this update later: `git reset --hard <SHA>` on `<branch>` (or `git merge --abort` mid-merge)."*
 
-## 2. Refresh main and pick the merge target
+## 2. Refresh upstream and pick the merge target
 
-- `git checkout main && git pull --ff-only`. If the pull isn't fast-forward, stop and surface it — `main` should never have local commits on this setup.
-- `git checkout <branch-from-step-1>`.
-- Count what's incoming: `git rev-list --count HEAD..main`.
+- `git fetch origin main` — refreshes `origin/main` (upstream) without leaving the current branch. Merge everything from `origin/main`, never a local `main`.
+- Count what's incoming: `git rev-list --count HEAD..origin/main`.
 - **Merge target** — the SHA to merge in step 3:
-  - `--all` passed, or count ≤ ~20 → target is `main` (merge everything).
+  - `--all` passed, or count ≤ ~20 → target is `origin/main` (merge everything).
   - Otherwise → target a **natural boundary near 20 commits**, not exactly 20.
-    Inspect `git log --oneline --reverse HEAD..main`, read subjects, and cut where
+    Inspect `git log --oneline --reverse HEAD..origin/main`, read subjects, and cut where
     a series ends rather than mid-feature — e.g. if commits 18–21 share a scope,
     stop at 17 or extend to 21; a day/date change is also a clean seam. Pin the
     chosen commit's SHA. Tell the user how many you're taking of the total and that
-    they should re-run `/update-from-main` for the rest.
+    they should re-run `/merge-upstream` for the rest.
 
-## 3. Merge into the Windows-port branch
+## 3. Merge into the current branch
 
-- `git merge --no-ff <merge-target-from-step-2>` — one merge commit; keep Windows adaptations in follow-up commits (per `AGENTS.md`). (Target is `main` for a full merge, or the pinned partial-batch SHA.)
+- `git merge --no-ff <merge-target-from-step-2>` — one merge commit; keep Windows adaptations in follow-up commits (per `AGENTS.md`). (Target is `origin/main` for a full merge, or the pinned partial-batch SHA.)
 - Resolve conflicts favouring the Windows adaptation (each patch-list entry names the files it touches). If `.git/index.lock` appears, delete it and retry.
 - Commit the merge (resolved).
 
@@ -108,8 +107,8 @@ If nothing in the applied-patch surface changed, say so — testing is lower-ris
 
 **Report any patch-list changes** from step 4: name each entry you added,
 extended (new commit hash / widened Where), or removed (OVERRIDABLE dropped for
-upstream), so the user knows the SSOT moved and can eyeball the edits.
+upstream), so the user knows the SSOT moved.
 
 End by restating the pre-merge SHA and the revert command. If this was a partial
 batch (step 2 capped it), remind the user how many commits remain and to re-run
-`/update-from-main` to pull them.
+`/merge-upstream` to pull them.
