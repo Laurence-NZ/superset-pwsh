@@ -625,22 +625,13 @@ notify the user and switch to theirs.
   likely want upstream's copy. **Expect merge conflicts** in
   `builtin-terminal-agents.ts` on any merge that touches those descriptions.
 - **What:** custom claude/copilot/cursor/pi builtin agent descriptions in
-  `BUILTIN_TERMINAL_AGENTS` ("Dario take the wheel!", "In Altman we trust.",
-  "Absolutely maths.", "Devs love Microsoft!", "Cursor gonna curse.").
+  `BUILTIN_TERMINAL_AGENTS`.
 - **Where:** `packages/shared/src/builtin-terminal-agents.ts`.
 - **Scan for:** upstream editing the same builtin descriptions (conflict —
   decide whose copy wins).
-- **DROPPED on the 2026-07-20 main merge — live presets-bar resolution:** F3
-  originally also fixed the seed-once staleness gotcha (AGENTS.md rule #12) by
-  resolving the presets-bar tooltip description **live** from the builtin agent
-  in `V2PresetBarItem.tsx`. Upstream refactored the presets-bar tooltip from
-  `HotkeyLabel` (label + hotkey) to a shortcut-only `HotkeyTooltip` that shows
-  **only the hotkey chip** — the description is no longer displayed in the
-  presets bar at all, so the live-resolution code became dead and was removed
-  (adopted upstream per the OVERRIDABLE policy; user notified). The custom
-  descriptions above are still shown wherever the builtin agent's description
-  surfaces elsewhere; rule #12's live-vs-stored guidance still applies to any
-  such surface.
+- **Note:** the descriptions surface in V2 agent settings
+  (`V2AgentsSettings.tsx`, resolved live), not the presets bar — upstream's
+  presets-bar tooltip is shortcut-only.
 
 ## F4 — Ignore stale closed PRs when linking branches
 
