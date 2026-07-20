@@ -207,10 +207,16 @@ function getConfirmOnQuitSetting(): boolean {
 app.on("before-quit", async (event) => {
 	if (isQuitting) return;
 
+	// The cleanup below is async (terminal-host shutdown, pty-daemon reap,
+	// network logger). Electron quits the instant this handler suspends at its
+	// first await unless we cancel the default quit here — so always
+	// preventDefault and let the explicit app.exit(0) (or the cancel-path
+	// return) drive the actual exit. Skipping this on the Quit-Completely path
+	// killed the main process before killAllPtyDaemons could reap the daemon.
+	event.preventDefault();
+
 	const isDev = process.env.NODE_ENV === "development";
 	if (!skipQuitConfirmation && !isDev && getConfirmOnQuitSetting()) {
-		event.preventDefault();
-
 		try {
 			const { response } = await dialog.showMessageBox({
 				type: "question",

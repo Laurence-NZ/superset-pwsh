@@ -400,9 +400,16 @@ For **each** patch entry:
   Superset" deliberately leaves the daemon alive.
 - **Where:** `apps/desktop/src/main/lib/pty-daemon-cleanup.ts`
   (`killAllPtyDaemons`), called from the `forceFullCleanup` branch of
-  `before-quit` in `apps/desktop/src/main/index.ts`.
+  `before-quit` in `apps/desktop/src/main/index.ts`. The `before-quit` handler
+  must `event.preventDefault()` **unconditionally** (before any branch): the
+  cleanup is async, and without preventDefault Electron terminates the main
+  process the instant the handler suspends at its first `await`, before the
+  daemon reap can spawn its `taskkill`. The explicit `app.exit(0)` at the end
+  (and the cancel-path `return`) drive the actual exit.
 - **Scan for:** changes to `before-quit` / `forceFullCleanup` that drop the
-  daemon reap; a new detached daemon spawn not recorded in the manifest.
+  daemon reap; a `preventDefault()` moved back inside the confirmation-dialog
+  branch (re-introduces the race); a new detached daemon spawn not recorded in
+  the manifest.
 
 ## W18 — Windows Ctrl+Left/Right word-jump uses VT sequences
 
