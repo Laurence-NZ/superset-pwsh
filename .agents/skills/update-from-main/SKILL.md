@@ -70,6 +70,7 @@ extended, or removed) so the user knows the SSOT moved.
 
 ## 5. Validate
 
+- Run `bun i` to ensure dependencies are up-to-date.
 - `bun run typecheck` — upstream frequently changes a shared helper's signature (`resolveScript`, `writeTempAskpass`, …) that the Windows layer builds on; the types break with no conflict marker. Must pass.
 - `bun run lint` must exit 0 (CI treats warnings as errors). `biome lineEnding` stays `lf` — never let it flip to `auto`. Run `bun run lint:fix` for auto-fixes.
 
