@@ -243,6 +243,16 @@ For **each** patch entry:
 - **Scan for:** merge changes to these injectors that drop the win32 guard, or a
   **new** agent's dotfile injector emitting a bare `.sh` command with no win32
   guard (droid/mastra/vibe/amp share the latent bug, currently unused).
+- **Opt-in re-enable (standalone script):** since the app skips auto-inject on
+  win32, users wire the Claude hooks on demand with
+  `scripts/windows/setup-claude-notify.ps1` (`pwsh …`, documented in
+  `README.md`). It's self-contained (no repo imports): writes
+  `~/.claude/hooks/superset-notify.sh` (bridge → `$SUPERSET_HOME_DIR/hooks/notify.sh`,
+  needs bash), then merges the hook entries that call it into
+  `~/.claude/settings.json`. Idempotent (strips prior `superset-notify.sh`
+  entries before re-adding), backs up `settings.json`, manages only the bridge
+  entries (leaves any user `notify.ps1` and everything else untouched), and
+  supports `-DryRun`. Independent of the app's own `notify.cmd` path.
 
 ## W12 — Lost V2 terminal sessions tombstone read-only (no silent respawn)
 

@@ -60,6 +60,22 @@ services, common commands, and troubleshooting — see
 Windows use the `.ts` flow above). Repo structure and DB/migration conventions
 are in [`AGENTS.md`](AGENTS.md).
 
+## Claude Status notifications (recommended)
+
+The desktop app skips auto-registering its Claude Code notify hooks on Windows
+(see W11 in the patch list), so Claude Code session/tool activity won't surface
+as notifications by default. To wire them up, run:
+
+```powershell
+pwsh scripts/windows/setup-claude-notify.ps1
+```
+
+This installs `~/.claude/hooks/superset-notify.sh` (bridges Claude Code events
+into Superset; needs `bash` on PATH from Git for Windows) and merges the hook
+entries that call it into `~/.claude/settings.json`. Idempotent; backs up
+`settings.json` first, and manages only the bridge entries — every other hook
+and setting is left untouched.
+
 ## Building
 
 ```powershell
