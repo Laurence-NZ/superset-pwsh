@@ -53,6 +53,21 @@ treatment an existing patch applies (e.g. a new `child_process` spawn without
 `windowsHide`, a new terminal command joined with `&&` instead of shell-aware
 chaining, a new Unix-socket path). Patch and commit those the same way.
 
+**Update `docs/windows-port-patch-list.md` whenever the walk changes the truth
+it records** — it's the SSOT and goes stale otherwise:
+- Re-applied a patch or patched a **new** violation site → append the new
+  `fix(...)` commit hash to that entry's **Commits** (and widen **Where** if the
+  surface grew).
+- Dropped an **OVERRIDABLE** patch because upstream now ships the equivalent
+  (with the user's go-ahead) → delete the entry, noting the upstream replacement.
+- The merge surfaces a genuinely new invariant to protect → add a new entry in
+  the right section (§1/§2) with its Commits, Invariant/Why, Where, Scan for,
+  and Override policy.
+
+Commit the patch-list edit alongside the change it documents, not as an
+afterthought — and call it out in the step 6 report (which entries you added,
+extended, or removed) so the user knows the SSOT moved.
+
 ## 5. Validate
 
 - `bun run typecheck` — upstream frequently changes a shared helper's signature (`resolveScript`, `writeTempAskpass`, …) that the Windows layer builds on; the types break with no conflict marker. Must pass.
@@ -62,12 +77,22 @@ chaining, a new Unix-socket path). Patch and commit those the same way.
 
 The user validates by running `bun run dev:desktop`. Do not claim runtime
 correctness — you can't observe it. List concrete things to check, driven by
-what the merge actually touched. Flag with specifics:
+what the merge actually touched.
 
-- If a re-applied patch touched terminals/pty: open a V2 terminal, run a bare command (`git status`) — confirms PATHEXT/PowerShell env; run a preset that auto-executes — confirms `\r` / `&&` handling.
-- If it touched `@parcel/watcher` / workspace-fs: open a workspace, confirm no `cmd.exe` window flashes and no focus-steal.
-- If it touched process spawns / tree-kill: switch workspaces, confirm no console-window flash.
-- If it touched sound/ringtone: preview a ringtone in settings.
-- If nothing in the applied-patch surface changed, say so — testing is lower-risk.
+**Derive each check from the patch list — don't keep a hardcoded list here.**
+For every patch you re-applied (or every entry whose surface the merge touched),
+read that entry's **Where** (the surface to exercise) and **Symptom if broken**
+(what failure looks like), and turn them into a concrete manual step. That keeps
+this step correct as entries are added, instead of drifting from the SSOT.
+
+Example of the shape (for a re-applied W-entry touching terminals/pty): open a
+V2 terminal, run a bare command (`git status`) to confirm PATHEXT/PowerShell env
+(W9), and run an auto-executing preset to confirm `\r` / `&&` handling (W19/W7).
+
+If nothing in the applied-patch surface changed, say so — testing is lower-risk.
+
+**Report any patch-list changes** from step 4: name each entry you added,
+extended (new commit hash / widened Where), or removed (OVERRIDABLE dropped for
+upstream), so the user knows the SSOT moved and can eyeball the edits.
 
 End by restating the pre-merge SHA and the revert command.
