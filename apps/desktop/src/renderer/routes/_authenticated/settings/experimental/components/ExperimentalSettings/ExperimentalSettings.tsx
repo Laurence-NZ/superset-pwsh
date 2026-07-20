@@ -220,8 +220,12 @@ export function ExperimentalSettings({
 							</div>
 							<Switch
 								id="disable-auto-update"
-								checked={runtimeFlagsDraft.disableAutoUpdate}
-								disabled={runtimeControlsDisabled}
+								// Windows fork: auto-update checks always fail on this
+								// unpublished build (no Windows release feed), so auto-update is
+								// force-disabled in the main process (see
+								// isAutoUpdateDisabledByRuntimeFlags) and this toggle is locked on.
+								checked
+								disabled
 								onCheckedChange={(disableAutoUpdate) =>
 									updateRuntimeFlagsDraft({ disableAutoUpdate })
 								}

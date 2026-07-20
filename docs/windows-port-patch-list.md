@@ -687,3 +687,30 @@ notify the user and switch to theirs.
 - **Scan for:** upstream reworking `useIsV2CloudEnabled` (e.g. new signature or
   new opt-out source) — re-apply the forced `true`; a merge that drops the
   `disabled` prop from the `superset-v2` switch — re-pin it.
+
+## F7 — Force auto-update off and lock the "Disable auto-update checks" toggle
+
+- **Commits:** `15d0cca32`
+- **Override policy:** **LOCKED for this fork.** This fork is never published
+  with a Windows release feed, so update checks can only fail. Not a candidate
+  to switch to upstream — upstream ships real per-platform release manifests.
+- **What:** `isAutoUpdateDisabledByRuntimeFlags()` unconditionally returns
+  `true` (was: persisted `disableAutoUpdate` runtime flag OR the
+  `SUPERSET_DISABLE_AUTO_UPDATE` env var), so every auto-update entry point —
+  `setupAutoUpdater`, the periodic `checkForUpdates`, and the interactive
+  `checkForUpdatesInteractive` — short-circuits to disabled. The original logic
+  is preserved as a comment for restore. The Experimental settings "Disable
+  auto-update checks" switch stays visible but is rendered `checked` +
+  `disabled`; since the main-process gate is hard-wired on, it reads as on and
+  can't be turned off (its `onCheckedChange` is now dead code, kept only to
+  minimise the diff). Mirrors [F6].
+- **Where:** `apps/desktop/src/main/lib/desktop-runtime-flags.ts`
+  (`isAutoUpdateDisabledByRuntimeFlags` returns `true`; drops the now-unused
+  `isTruthyRuntimeFlag` import);
+  `apps/desktop/src/renderer/routes/_authenticated/settings/experimental/components/ExperimentalSettings/ExperimentalSettings.tsx`
+  (`checked` + `disabled` on the `disable-auto-update` `Switch`).
+- **Scan for:** upstream reworking `isAutoUpdateDisabledByRuntimeFlags` (e.g.
+  new signature, a new gate helper, or moving the check inline into
+  `auto-updater.ts`) — re-apply the forced `true` at the effective chokepoint; a
+  merge that drops the `checked`/`disabled` props from the `disable-auto-update`
+  switch — re-pin them.
