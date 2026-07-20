@@ -16,6 +16,11 @@ section of `AGENTS.md`. Read the patch list before merging.
 
 Run every step from the repo root. Use the `ask_user` tool for any question.
 
+**Batch by default.** A merge dragging in dozens of upstream commits makes step 4
+(re-verify every patch) unreviewable in one pass. Unless invoked with `--all`,
+cap each run at ~20 commits and merge to a natural boundary (step 2); tell the
+user to re-run the skill to pull the rest. `--all` merges everything in one go.
+
 ## 1. Preflight — record the escape hatch
 
 - `git status --porcelain` must be empty. If dirty, stop and tell the user to commit/stash first.
@@ -24,14 +29,23 @@ Run every step from the repo root. Use the `ask_user` tool for any question.
   - `git rev-parse HEAD` → this is the pre-merge SHA.
 - Tell the user plainly: *"To undo this update later: `git reset --hard <SHA>` on `<branch>` (or `git merge --abort` mid-merge)."*
 
-## 2. Refresh main
+## 2. Refresh main and pick the merge target
 
-`git checkout main && git pull --ff-only`. If the pull isn't fast-forward, stop and surface it — `main` should never have local commits on this setup.
+- `git checkout main && git pull --ff-only`. If the pull isn't fast-forward, stop and surface it — `main` should never have local commits on this setup.
+- `git checkout <branch-from-step-1>`.
+- Count what's incoming: `git rev-list --count HEAD..main`.
+- **Merge target** — the SHA to merge in step 3:
+  - `--all` passed, or count ≤ ~20 → target is `main` (merge everything).
+  - Otherwise → target a **natural boundary near 20 commits**, not exactly 20.
+    Inspect `git log --oneline --reverse HEAD..main`, read subjects, and cut where
+    a series ends rather than mid-feature — e.g. if commits 18–21 share a scope,
+    stop at 17 or extend to 21; a day/date change is also a clean seam. Pin the
+    chosen commit's SHA. Tell the user how many you're taking of the total and that
+    they should re-run `/update-from-main` for the rest.
 
 ## 3. Merge into the Windows-port branch
 
-- `git checkout <branch-from-step-1>`
-- `git merge --no-ff main` — one merge commit; keep Windows adaptations in follow-up commits (per `AGENTS.md`).
+- `git merge --no-ff <merge-target-from-step-2>` — one merge commit; keep Windows adaptations in follow-up commits (per `AGENTS.md`). (Target is `main` for a full merge, or the pinned partial-batch SHA.)
 - Resolve conflicts favouring the Windows adaptation (each patch-list entry names the files it touches). If `.git/index.lock` appears, delete it and retry.
 - Commit the merge (resolved).
 
@@ -96,4 +110,6 @@ If nothing in the applied-patch surface changed, say so — testing is lower-ris
 extended (new commit hash / widened Where), or removed (OVERRIDABLE dropped for
 upstream), so the user knows the SSOT moved and can eyeball the edits.
 
-End by restating the pre-merge SHA and the revert command.
+End by restating the pre-merge SHA and the revert command. If this was a partial
+batch (step 2 capped it), remind the user how many commits remain and to re-run
+`/update-from-main` to pull them.
