@@ -43,6 +43,7 @@ import {
 	shutdownTanstackDbPersistence,
 } from "./lib/persistence/persistence";
 import { ensureProjectIconsDir, getProjectIconPath } from "./lib/project-icons";
+import { killAllPtyDaemons } from "./lib/pty-daemon-cleanup";
 import { initSentry } from "./lib/sentry";
 import {
 	prewarmTerminalRuntime,
@@ -235,6 +236,7 @@ app.on("before-quit", async (event) => {
 		getHostServiceCoordinator().stopAll();
 		if (isDev || forceFullCleanup) {
 			await teardownTerminalHost();
+			await killAllPtyDaemons();
 		} else if (isUpdateReadyToInstall()) {
 			disposeTerminalHostClient();
 		}
