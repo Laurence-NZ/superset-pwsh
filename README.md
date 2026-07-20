@@ -1,11 +1,8 @@
-# superset-pwsh — Unofficial Superset Windows Fork
+# superset-pwsh - superset-sh for windows
 
 Yet another unofficial native-Windows fork of [Superset](https://github.com/superset-sh/superset).
 
-Periodically merges in code from upstream `main`. This should serve as a stop-gap until Windows support is officially added to superset. 
-
-Forked off this fork's initial attempt -
-[`garciarsdiego/superset@windows-native-port`](https://github.com/garciarsdiego/superset/tree/windows-native-port).
+This should serve as a stop-gap until superset-sh officially adds support for Windows. 
 
 Every Windows-specific change (and the handful of unrelated bug fixes/features)
 is catalogued in [`docs/windows-port-patch-list.md`](docs/windows-port-patch-list.md).
@@ -14,16 +11,17 @@ is catalogued in [`docs/windows-port-patch-list.md`](docs/windows-port-patch-lis
 
 ### To run
 
-- **PowerShell 7** — this fork uses PowerShell 7 (`pwsh`) instead of `cmd`
+- **PowerShell 7** - this fork uses PowerShell 7 (`pwsh`) instead of `cmd`
   ([install guide](https://learn.microsoft.com/en-us/powershell/scripting/install/install-powershell-on-windows?view=powershell-7.6)).
-  Only the **Store/MSIX package** version has been tested.
+  - Only the **Store/MSIX package** version has been tested.
 
 ### To develop
 
-- [Bun](https://bun.sh/) — version pinned in `.bun-version`, auto-selected
+- [Bun](https://bun.sh/)
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/)
-- [Caddy](https://caddyserver.com/docs/install) — run `caddy trust` once (HTTPS reverse proxy for `localhost` dev / Electric streams)
-- Git for Windows (2.20+) and [GitHub CLI (`gh`)](https://cli.github.com/)
+- [Caddy](https://caddyserver.com/docs/install)
+- Git for Windows (2.20+)
+- [GitHub CLI (`gh`)](https://cli.github.com/)
 
 ### To build the desktop app
 
@@ -54,8 +52,7 @@ bun ./.superset/teardown.local.ts
 bun run dev:desktop
 ```
 
-For the upstream contributor guide — manual setup against real
-services, common commands, and troubleshooting — see
+For the upstream contributor guide for more info:
 [`DEVELOPMENT.md`](DEVELOPMENT.md) (its `.sh` setup steps are Unix-only; on
 Windows use the `.ts` flow above). Repo structure and DB/migration conventions
 are in [`AGENTS.md`](AGENTS.md).
@@ -85,7 +82,5 @@ bun run --cwd apps/desktop build --win --x64
 
 Installer output:
 ```txt
-C:\repos\superset\apps\desktop\release
+superset\apps\desktop\release
 ```
-
-Overwrites the existing installer if the version is unchanged.
