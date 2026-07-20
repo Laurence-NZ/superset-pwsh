@@ -669,7 +669,7 @@ notify the user and switch to theirs.
 
 ## F6 — Force v2 on and lock the "Try Superset v2" opt-out toggle
 
-- **Commits:** `7c9abbfd8`
+- **Commits:** `c1d3fc4df`
 - **Override policy:** **LOCKED for this fork.** This fork is v2-only on Windows
   (v1 untested), so we never want the opt-out. Not a candidate to switch to
   upstream — upstream deliberately keeps v1/v2 selectable.
