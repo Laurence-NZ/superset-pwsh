@@ -437,7 +437,7 @@ if (!gotTheLock) {
 				if (!token) return;
 				await getHostServiceCoordinator().startAllKnown({
 					authToken: token,
-					cloudApiUrl: mainEnv.NEXT_PUBLIC_API_URL,
+					cloudApiUrl: getMainApiUrl(),
 				});
 			} catch (error) {
 				console.error("[main] host-service boot reconcile failed:", error);
