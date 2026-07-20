@@ -84,3 +84,9 @@ Installer output:
 ```txt
 superset\apps\desktop\release
 ```
+
+## License & attribution
+
+This is a modified build of [Superset](https://github.com/superset-sh/superset)
+with native Windows x64 support. Not affiliated with or endorsed by Superset,
+Inc. Licensed under the Elastic License 2.0 (see [`LICENSE.md`](LICENSE.md)).
