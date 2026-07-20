@@ -6,11 +6,13 @@ description: "Use whenever about to merge upstream `main` into the local-only Wi
 # update-from-main
 
 Merge upstream `main` into the Windows-port branch without losing the applied
-Windows adaptations. The definitive list of those adaptations is the
-commit-keyed **Applied patches (merge checklist)** table in
-`docs/windows-port-audit.md`; raw patch detail lives in
-`docs/superset-windows-PATCHES.md`; narrative context is the "Windows port"
-section of `AGENTS.md`. Read the checklist table before merging.
+Windows adaptations. The definitive list of those adaptations — plus the
+unrelated bug fixes/features this branch carries — is
+`docs/windows-port-patch-list.md`: commit-keyed patch entries (§1 Windows
+support, §2 features & fixes), each with an invariant, the files it touches, and
+a **Scan for** signature. Its **How to walk this list** section is the
+authoritative per-entry procedure. Narrative context is the "Windows port"
+section of `AGENTS.md`. Read the patch list before merging.
 
 Run every step from the repo root. Use the `ask_user` tool for any question.
 
@@ -30,18 +32,21 @@ Run every step from the repo root. Use the `ask_user` tool for any question.
 
 - `git checkout <branch-from-step-1>`
 - `git merge --no-ff main` — one merge commit; keep Windows adaptations in follow-up commits (per `AGENTS.md`).
-- Resolve conflicts favouring the Windows adaptation. Conflict-hotspot map: `docs/windows-port-audit.md`. If `.git/index.lock` appears, delete it and retry.
+- Resolve conflicts favouring the Windows adaptation (each patch-list entry names the files it touches). If `.git/index.lock` appears, delete it and retry.
 - Commit the merge (resolved).
 
 ## 4. Re-verify every applied patch survived
 
 Text auto-merges but behaviour breaks silently: upstream moves or rewrites a
-file and the adaptation vanishes with no conflict marker. For **each row** of
-the checklist table in `docs/windows-port-audit.md`:
+file and the adaptation vanishes with no conflict marker. Walk **every entry**
+in `docs/windows-port-patch-list.md`, following its **How to walk this list**
+section. Per entry:
 
-- `git show <commit-hash>` to see the original change.
+- `git show <commit-hash>` (from the entry's **Commits**) to see the original change.
 - Confirm the target file still exists and still carries the adaptation.
-- If upstream refactored it away, re-apply the adaptation (use `docs/superset-windows-PATCHES.md` for exact intent), then commit it **separately** with a `fix(...)` message describing the Windows re-adaptation. One commit per adaptation so the integration and the Windows work review apart.
+- Run the entry's **Scan for** signature against the merged-in diff to catch *new* violation sites (see the general reminder below).
+- Apply the entry's **Override policy**: LOCKED → keep ours; OVERRIDABLE → if upstream now ships the equivalent fix/feature, notify the user and let them decide before switching.
+- If upstream refactored ours away, re-apply it (the entry's **Invariant / Why** is the intent), then commit it **separately** with a `fix(...)` message describing the Windows re-adaptation. One commit per adaptation so the integration and the Windows work review apart.
 
 Also scan the merged-in upstream diff for **new** code that needs the same
 treatment an existing patch applies (e.g. a new `child_process` spawn without
