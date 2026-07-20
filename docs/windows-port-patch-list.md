@@ -616,23 +616,6 @@ notify the user and switch to theirs.
 - **Scan for:** upstream changes to the unpushed-commits / branch-sync warning
   logic that supersede this guard.
 
-## F3 — Custom builtin agent descriptions
-
-- **Commits:** `8815c3070` (feature + agent rule #12), `1d22b77c0` (reword
-  claude/cursor/codex copy)
-- **Override policy:** **OVERRIDABLE** (product copy, not Windows-specific). If
-  upstream reworks the builtin agent descriptions, notify the user — they'll
-  likely want upstream's copy. **Expect merge conflicts** in
-  `builtin-terminal-agents.ts` on any merge that touches those descriptions.
-- **What:** custom claude/copilot/cursor/pi builtin agent descriptions in
-  `BUILTIN_TERMINAL_AGENTS`.
-- **Where:** `packages/shared/src/builtin-terminal-agents.ts`.
-- **Scan for:** upstream editing the same builtin descriptions (conflict —
-  decide whose copy wins).
-- **Note:** the descriptions surface in V2 agent settings
-  (`V2AgentsSettings.tsx`, resolved live), not the presets bar — upstream's
-  presets-bar tooltip is shortcut-only.
-
 ## F4 — Ignore stale closed PRs when linking branches
 
 - **Commits:** `8e7d6a92b`
