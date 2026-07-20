@@ -4,14 +4,11 @@ Yet another unofficial native-Windows fork of [Superset](https://github.com/supe
 
 Periodically merges in code from upstream `main`. This should serve as a stop-gap until Windows support is officially added to superset. 
 
-Stable and actually daily driven by me, let me know if you find something broken and I will endeavour to fix it.
-
-Based off this fork's initial attempt —
+Forked off this fork's initial attempt -
 [`garciarsdiego/superset@windows-native-port`](https://github.com/garciarsdiego/superset/tree/windows-native-port).
 
 Every Windows-specific change (and the handful of unrelated bug fixes/features)
-is catalogued in [`docs/windows-port-patch-list.md`](docs/windows-port-patch-list.md),
-which the `/update-from-main` skill walks after each merge to keep the port intact.
+is catalogued in [`docs/windows-port-patch-list.md`](docs/windows-port-patch-list.md).
 
 ## Dependencies
 

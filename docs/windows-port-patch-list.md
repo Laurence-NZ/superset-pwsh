@@ -5,6 +5,12 @@ on top of upstream `main`. The `/update-from-main` skill walks this list after
 each merge to confirm every patch is still present and still correct — text
 auto-merges, behaviour breaks silently.
 
+**Scope: Superset v2 only.** v2 is the ground-up rebuild of the desktop shell
+(from-scratch terminal, IDE-like Tab/Split/Pane layout, file tree, editor, diff
+viewer) — not just a cloud feature; v1 is the legacy chat-first UX. Dev builds
+default to v2 and every patch here targets v2's terminal/agent/workspace paths.
+v1 is untested on Windows and out of scope — don't patch or verify v1 paths.
+
 ## How to walk this list (run after each `main` merge)
 
 Each entry describes an **invariant**, not a one-time diff. Two things can break
