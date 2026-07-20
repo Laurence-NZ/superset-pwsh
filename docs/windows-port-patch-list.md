@@ -690,7 +690,7 @@ notify the user and switch to theirs.
 
 ## F7 — Force auto-update off and lock the "Disable auto-update checks" toggle
 
-- **Commits:** `15d0cca32`
+- **Commits:** `4b648216f`
 - **Override policy:** **LOCKED for this fork.** This fork is never published
   with a Windows release feed, so update checks can only fail. Not a candidate
   to switch to upstream — upstream ships real per-platform release manifests.
