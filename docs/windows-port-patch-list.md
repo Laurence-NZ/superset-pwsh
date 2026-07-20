@@ -616,7 +616,7 @@ notify the user and switch to theirs.
 - **Scan for:** upstream changes to the unpushed-commits / branch-sync warning
   logic that supersede this guard.
 
-## F4 — Ignore stale closed PRs when linking branches
+## F3 — Ignore stale closed PRs when linking branches
 
 - **Commits:** `8e7d6a92b`
 - **Override policy:** **OVERRIDABLE** (genuine bug fix, not Windows-specific).
@@ -631,7 +631,7 @@ notify the user and switch to theirs.
 - **Scan for:** upstream changes to the branch↔PR linking / head-ref match logic
   that supersede this stale-PR filter.
 
-## F5 — Human-readable project worktree folder names
+## F4 — Human-readable project worktree folder names
 
 - **Commits:** `33abbc627`
 - **Override policy:** **OVERRIDABLE**, but **behaviour-changing on all
@@ -650,7 +650,7 @@ notify the user and switch to theirs.
   new code that tries to parse the project GUID back out of a worktree path
   (would break on the slugged name).
 
-## F6 — V2 "Open in…" button appears on freshly-created workspaces
+## F5 — V2 "Open in…" button appears on freshly-created workspaces
 
 - **Commits:** `7211d91b5`
 - **Override policy:** **OVERRIDABLE** (genuine bug fix, not Windows-specific).
