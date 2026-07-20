@@ -654,3 +654,20 @@ notify the user and switch to theirs.
 - **Scan for:** upstream changing the worktree-path layout (conflict), or any
   new code that tries to parse the project GUID back out of a worktree path
   (would break on the slugged name).
+
+## F6 — V2 "Open in…" button appears on freshly-created workspaces
+
+- **Commits:** `7211d91b5`
+- **Override policy:** **OVERRIDABLE** (genuine bug fix, not Windows-specific).
+  If upstream fixes the same stale gate, adopt theirs.
+- **What:** the top-right "Open in VSCode / Cursor / Finder" button was gated on
+  a one-shot `workspace.get` `useQuery` that fired once on mount and never
+  refetched. A newly-created workspace's worktree isn't provisioned at mount, so
+  the query returned `worktreePath: null` and the button stayed hidden until the
+  user clicked off the workspace and back (remount re-fired the query). Fixed by
+  gating on the already-live `workspace.worktreePath` from `useHostWorkspaces`
+  (healed by `workspace:changed` bus events) and deleting the redundant query.
+- **Where:** `apps/desktop/src/renderer/routes/_authenticated/_dashboard/components/TopBar/components/V2WorkspaceOpenInButton/V2WorkspaceOpenInButton.tsx`.
+- **Scan for:** upstream reintroducing a one-shot `workspace.get` gate on this
+  button, or any new gate that reads a non-live source for `worktreePath`
+  instead of the `useHostWorkspaces` row.
