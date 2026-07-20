@@ -135,34 +135,43 @@ test("adoptFromFd validates inputs", { timeout: 10_000 }, () => {
 	);
 });
 
-test(
-	"adoptFromFd wraps a real PTY master fd without crashing",
-	{ timeout: 10_000 },
-	() => {
-		if (process.platform === "win32") return;
-
-		// API-surface check only. End-to-end I/O on an adopted fd is validated
-		// in the cross-process handoff integration test — in this test process,
-		// node-pty's native worker is actively reading from the master fd, so
-		// adoptFromFd's read stream would race with it. In a real successor
-		// daemon, node-pty doesn't exist for the adopted session.
-		const original = spawnPty({
-			meta: commandMeta(sleepCommand(1)),
+test("adoptFromFd wraps a real PTY master fd without crashing", async () => {
+	if (process.platform === "win32") return;
+	// API-surface check only. End-to-end I/O on an adopted fd is validated
+	// in the cross-process handoff integration test — in this test process,
+	// node-pty's native worker is actively reading from the master fd, so
+	// adoptFromFd's read stream would race with it. In a real successor
+	// daemon, node-pty doesn't exist for the adopted session.
+	const original = spawnPty({
+		meta: commandMeta(sleepCommand(1)),
+	});
+	// Adopt a /dev/fd dup, not node-pty's own fd: AdoptedPty owns (and
+	// closes) the fd it's given, and closing node-pty's copy under its
+	// internal ReadStream surfaces as an uncaught EBADF. Only this test
+	// double-owns a master fd; a real successor daemon owns it exclusively.
+	const dupFd = fs.openSync(`/dev/fd/${original.getMasterFd()}`, "r+");
+	let adopted: ReturnType<typeof adoptFromFd> | null = null;
+	try {
+		adopted = adoptFromFd({
+			fd: dupFd,
+			pid: original.pid,
+			meta: original.meta,
 		});
-		try {
-			const adopted = adoptFromFd({
-				fd: original.getMasterFd(),
-				pid: original.pid,
-				meta: original.meta,
-			});
-			assert.equal(adopted.pid, original.pid);
-			assert.equal(adopted.getMasterFd(), original.getMasterFd());
-			// resize updates meta but not kernel-side window (TODO: koffi ioctl)
-			adopted.resize(120, 40);
-			assert.equal(adopted.meta.cols, 120);
-			assert.equal(adopted.meta.rows, 40);
-		} finally {
-			original.kill("SIGKILL");
-		}
-	},
-);
+		assert.equal(adopted.pid, original.pid);
+		assert.equal(adopted.getMasterFd(), dupFd);
+		// resize updates meta but not kernel-side window (TODO: koffi ioctl)
+		adopted.resize(120, 40);
+		assert.equal(adopted.meta.cols, 120);
+		assert.equal(adopted.meta.rows, 40);
+	} finally {
+		original.kill("SIGKILL");
+		// Let both sides observe the exit inside the test window so no
+		// async tail gets attributed to after-test activity.
+		await Promise.all([
+			new Promise<void>((r) => original.onExit(() => r())),
+			new Promise<void>((r) => {
+				adopted ? adopted.onExit(() => r()) : r();
+			}),
+		]);
+	}
+});

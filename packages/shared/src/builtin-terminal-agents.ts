@@ -62,6 +62,7 @@ export const BUILTIN_TERMINAL_AGENTS = [
 		label: "Claude",
 		description: "Dario take the wheel!",
 		command: "claude --dangerously-skip-permissions",
+		nonInteractiveCommand: "claude -p",
 		includeInDefaultTerminalPresets: true,
 	}),
 	createBuiltinTerminalAgent({
@@ -70,6 +71,7 @@ export const BUILTIN_TERMINAL_AGENTS = [
 		description:
 			"Amp's coding agent for terminal-first coding, subagents, and task work.",
 		command: "amp",
+		nonInteractiveCommand: "amp -x",
 		promptTransport: "stdin",
 		includeInDefaultTerminalPresets: true,
 	}),
@@ -79,6 +81,7 @@ export const BUILTIN_TERMINAL_AGENTS = [
 		description: "In Altman we trust.",
 		command: "codex --dangerously-bypass-approvals-and-sandbox",
 		promptCommand: "codex --dangerously-bypass-approvals-and-sandbox --",
+		nonInteractiveCommand: "codex exec --skip-git-repo-check",
 		includeInDefaultTerminalPresets: true,
 	}),
 	createBuiltinTerminalAgent({
@@ -88,6 +91,7 @@ export const BUILTIN_TERMINAL_AGENTS = [
 			"Google's open-source terminal agent for coding, problem-solving, and task work.",
 		command: "gemini --approval-mode=auto_edit",
 		promptCommand: "gemini --approval-mode=auto_edit",
+		nonInteractiveCommand: "gemini --skip-trust -p",
 		includeInDefaultTerminalPresets: true,
 	}),
 	createBuiltinTerminalAgent({
@@ -98,6 +102,7 @@ export const BUILTIN_TERMINAL_AGENTS = [
 		command: "mastracode",
 		promptCommand: "mastracode --prompt",
 		promptCommandSuffix: "; mastracode",
+		nonInteractiveCommand: "mastracode --mode plan --prompt",
 	}),
 	createBuiltinTerminalAgent({
 		id: "opencode",
@@ -105,12 +110,14 @@ export const BUILTIN_TERMINAL_AGENTS = [
 		description: "Open-source coding agent for the terminal, IDE, and desktop.",
 		command: "opencode",
 		promptCommand: "opencode --prompt",
+		nonInteractiveCommand: "opencode run --agent plan",
 	}),
 	createBuiltinTerminalAgent({
 		id: "pi",
 		label: "Pi",
 		description: "Absolutely maths.",
 		command: "pi",
+		nonInteractiveCommand: "pi --no-tools -p",
 	}),
 	createBuiltinTerminalAgent({
 		id: "copilot",
@@ -118,6 +125,7 @@ export const BUILTIN_TERMINAL_AGENTS = [
 		description: "Devs love Microsoft!",
 		command: "copilot --allow-tool=write",
 		promptCommand: "copilot --allow-tool=write -i",
+		nonInteractiveCommand: "copilot -p",
 		includeInDefaultTerminalPresets: true,
 	}),
 	createBuiltinTerminalAgent({
@@ -126,6 +134,17 @@ export const BUILTIN_TERMINAL_AGENTS = [
 		description:
 			"Mistral's coding agent for reading, editing, and running code from the terminal.",
 		command: "vibe --trust --auto-approve",
+		nonInteractiveCommand: "vibe --trust --agent plan -p",
+		includeInDefaultTerminalPresets: true,
+	}),
+	createBuiltinTerminalAgent({
+		id: "kimi",
+		label: "Kimi Code",
+		description:
+			"Moonshot AI's coding agent for reading, editing, and running code from the terminal.",
+		command: "kimi",
+		promptCommand: "kimi -p",
+		promptCommandSuffix: "; kimi --auto --continue",
 		includeInDefaultTerminalPresets: true,
 	}),
 	createBuiltinTerminalAgent({
@@ -133,12 +152,14 @@ export const BUILTIN_TERMINAL_AGENTS = [
 		label: "Cursor Agent",
 		description: "Cursor gonna curse.",
 		command: "cursor-agent",
+		nonInteractiveCommand: "cursor-agent --trust --mode ask -p",
 	}),
 	createBuiltinTerminalAgent({
 		id: "droid",
 		label: "Droid",
 		description: "Factory's autonomous coding agent for terminal workflows.",
 		command: "droid",
+		nonInteractiveCommand: "droid exec",
 	}),
 	createBuiltinTerminalAgent({
 		id: "polygraph",
@@ -171,6 +192,17 @@ export const BUILTIN_TERMINAL_AGENT_COMMANDS = createAgentRecord(
 	BUILTIN_TERMINAL_AGENTS,
 	(agent) => [agent.command],
 );
+
+/**
+ * Headless one-shot command per builtin agent, or undefined for agents
+ * without a non-interactive mode (polygraph orchestrates sessions and has
+ * no one-shot prompt form).
+ */
+export const BUILTIN_TERMINAL_AGENT_NON_INTERACTIVE_COMMANDS =
+	createAgentRecord(
+		BUILTIN_TERMINAL_AGENTS,
+		(agent) => agent.nonInteractiveCommand,
+	);
 
 export const BUILTIN_TERMINAL_AGENT_PROMPT_COMMANDS = createAgentRecord(
 	BUILTIN_TERMINAL_AGENTS,

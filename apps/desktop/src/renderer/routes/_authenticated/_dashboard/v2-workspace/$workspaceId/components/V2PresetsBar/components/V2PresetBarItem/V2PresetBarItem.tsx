@@ -1,5 +1,4 @@
 import type { HostAgentConfig } from "@superset/host-service/settings";
-import { getPresetById } from "@superset/shared/host-agent-presets";
 import { Button } from "@superset/ui/button";
 import {
 	ContextMenu,
@@ -8,12 +7,11 @@ import {
 	ContextMenuSeparator,
 	ContextMenuTrigger,
 } from "@superset/ui/context-menu";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { useEffect, useRef } from "react";
 import { useDrag, useDrop } from "react-dnd";
 import { HiMiniCommandLine } from "react-icons/hi2";
 import type { HotkeyId } from "renderer/hotkeys";
-import { HotkeyLabel } from "renderer/hotkeys";
+import { HotkeyTooltip } from "renderer/hotkeys";
 import { resolveV2PresetIcon } from "renderer/lib/preset-icon";
 import type { V2TerminalPresetRow } from "renderer/routes/_authenticated/providers/CollectionsProvider/dashboardSidebarLocal";
 
@@ -44,15 +42,6 @@ export function V2PresetBarItem({
 }: V2PresetBarItemProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const icon = resolveV2PresetIcon(preset, agents, isDark);
-	// Resolve the description live from the builtin agent so edits to
-	// BUILTIN_TERMINAL_AGENTS take effect; the stored value is a stale seed-time
-	// copy with no edit UI. Fall back to the stored value for custom presets.
-	const agent = agents?.find((candidate) => candidate.id === preset.agentId);
-	const liveDescription = agent
-		? getPresetById(agent.presetId)?.description
-		: undefined;
-	const label =
-		liveDescription || preset.description || preset.name || "default";
 
 	const [{ isDragging }, drag] = useDrag(
 		() => ({
@@ -96,32 +85,27 @@ export function V2PresetBarItem({
 					className={isDragging ? "opacity-40" : undefined}
 					style={{ cursor: isDragging ? "grabbing" : "grab" }}
 				>
-					<Tooltip>
-						<TooltipTrigger asChild>
-							<Button
-								variant="ghost"
-								size="sm"
-								className="h-6 max-w-32 min-w-0 shrink-0 gap-1.5 rounded-md px-1.5 text-xs font-normal text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
-								onClick={() => onExecutePreset(preset)}
-							>
-								{icon ? (
-									<img
-										src={icon}
-										alt=""
-										className="size-3.5 shrink-0 object-contain opacity-90"
-									/>
-								) : (
-									<HiMiniCommandLine className="size-3.5 shrink-0" />
-								)}
-								<span className="min-w-0 truncate">
-									{preset.name || "default"}
-								</span>
-							</Button>
-						</TooltipTrigger>
-						<TooltipContent side="bottom" sideOffset={4}>
-							<HotkeyLabel label={label} id={hotkeyId} />
-						</TooltipContent>
-					</Tooltip>
+					<HotkeyTooltip id={hotkeyId}>
+						<Button
+							variant="ghost"
+							size="sm"
+							className="h-6 max-w-32 min-w-0 shrink-0 gap-1.5 rounded-md px-1.5 text-xs font-normal text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+							onClick={() => onExecutePreset(preset)}
+						>
+							{icon ? (
+								<img
+									src={icon}
+									alt=""
+									className="size-3.5 shrink-0 object-contain opacity-90"
+								/>
+							) : (
+								<HiMiniCommandLine className="size-3.5 shrink-0" />
+							)}
+							<span className="min-w-0 truncate">
+								{preset.name || "default"}
+							</span>
+						</Button>
+					</HotkeyTooltip>
 				</div>
 			</ContextMenuTrigger>
 			<ContextMenuContent>
