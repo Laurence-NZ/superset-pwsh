@@ -61,7 +61,12 @@ For **each** patch entry:
   `0ff4d94f4` (2026-07-20 merge: routed upstream's new `startKnownHostServices`
   cloud-URL call site through `getMainApiUrl()` instead of the undefined
   `mainEnv` — packaged-build URL sanitization choke point in
-  `apps/desktop/src/main/index.ts` / `desktop-runtime-flags.ts`)
+  `apps/desktop/src/main/index.ts` / `desktop-runtime-flags.ts`);
+  `1346623b8` (2026-07-21 merge: upstream bumped `node-pty` `1.1.0` →
+  `1.2.0-beta.14` and wrapped `pty-daemon` `spawn()` in try/catch cleanup —
+  re-kept the `getMasterFd()` win32 guard (`_fd` handoff is POSIX-only) and made
+  the spawn-time fd validation `if (process.platform !== "win32")` inside the new
+  cleanup block, in `packages/pty-daemon/src/Pty/Pty.ts`)
 - **Override policy:** **LOCKED.** Upstream targets macOS/Linux; there is no
   upstream Windows port to defer to. Later, finer-grained W-entries refine and
   extend this base; verify them individually as they are migrated in.
@@ -454,7 +459,12 @@ For **each** patch entry:
 
 ## W19 — Programmatic command launches end in a bare CR for PowerShell
 
-- **Commits:** `4eda82193`
+- **Commits:** `4eda82193`; `1346623b8` (2026-07-21 merge: upstream #5774 wrapped
+  `queueInitialCommand`'s write in a `session.shellReadyPromise.then(...)` gate —
+  kept that gate but write through `appendShellLineEnding(initialCommand,
+  session.shell)`, not upstream's `initialCommand + "\n"`. On win32 the gate is a
+  no-op — `shellLaunchExpectsReadyMarker` returns false for pwsh/cmd (they never
+  emit OSC 133;A), so the promise resolves immediately.)
 - **Override policy:** **LOCKED** (PSReadLine keystroke semantics).
 - **Why:** PSReadLine accepts the line on the CR, then treats the trailing LF of
   a CRLF as a fresh keystroke — stranding a `>>` continuation prompt. A lone CR
@@ -474,8 +484,22 @@ For **each** patch entry:
 
 ## W20 — V2 agent launch commands quoted for the target shell
 
-- **Commits:** `c4eb36c61` (see also **W7** `6483e7884` for `&&` preservation)
-- **Override policy:** **LOCKED** (pwsh parser semantics).
+- **Commits:** `c4eb36c61` (see also **W7** `6483e7884` for `&&` preservation);
+  `1346623b8` (2026-07-21 merge) + `682fe061a` (test restore). Upstream #5784
+  replaced the "type the shell-aware command straight into the terminal" path
+  with a **POSIX launcher-script pipeline** (`withPreparedAgentLaunch` /
+  `prepareAgentLaunch` in `agent-launch.ts`): it writes a `#!/bin/sh` script that
+  uses `exec … < /dev/tty` + a `kill -0` ack file and types `/bin/sh <path>` into
+  the terminal. That is fundamentally POSIX-only (no `/bin/sh`, no `/dev/tty` on
+  Windows) and is **not** an upstream Windows equivalent to adopt. Re-applied W20
+  as a **`process.platform === "win32"` branch** in `runTerminalAgent`: on win32
+  keep the shell-aware `buildAgentCommandString` + `envOverlayPrefix` direct-type
+  path (no file-ack wait — that protocol lives in the POSIX launcher); POSIX uses
+  upstream's new pipeline. `buildAgentCommandString` is retained in `agents.ts`
+  solely for this win32 branch (upstream deleted it).
+- **Override policy:** **LOCKED** (pwsh parser semantics). New sub-invariant: the
+  POSIX launcher-script pipeline must stay win32-guarded — it can never be the
+  Windows launch path.
 - **Why:** POSIX single-quoting (`'claude' 'build a boat'`) is a PowerShell
   `ParserError` — pwsh reads a leading quoted string as an expression and rejects
   the following token.
@@ -490,10 +514,16 @@ For **each** patch entry:
   claude are wired for pwsh), `cmd.exe` isn't handled, and
   `buildHostAgentLaunchCommand` in `apps/web` passes no shell.
 - **Where:** `packages/shared/src/agent-prompt-launch.ts` (`buildArgvCommand`,
-  `envOverlayPrefix`); shell threaded from `runTerminalAgent` →
-  `buildAgentCommandString`.
+  `envOverlayPrefix`); shell threaded from `runTerminalAgent`'s win32 branch →
+  `buildAgentCommandString` (both in
+  `packages/host-service/src/trpc/router/agents/agents.ts`). The POSIX pipeline
+  it bypasses on win32 lives in the same dir's `agent-launch.ts`
+  (`withPreparedAgentLaunch` / `prepareAgentLaunch` / `waitForAgentLaunch`).
 - **Scan for:** new agent-launch quoting that assumes POSIX single-quotes; a new
-  launch path that doesn't thread the target shell through.
+  launch path that doesn't thread the target shell through; **any change that
+  routes `runTerminalAgent` through `withPreparedAgentLaunch` without the win32
+  guard** (the launcher script is `/bin/sh` + `/dev/tty`, dead on Windows), or a
+  new `prepareAgentLaunch` caller with no win32 branch.
 
 ## W21 — pty-daemon `hasRunningForegroundProcess` guarded on win32
 
