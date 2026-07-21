@@ -66,7 +66,14 @@ For **each** patch entry:
   `1.2.0-beta.14` and wrapped `pty-daemon` `spawn()` in try/catch cleanup —
   re-kept the `getMasterFd()` win32 guard (`_fd` handoff is POSIX-only) and made
   the spawn-time fd validation `if (process.platform !== "win32")` inside the new
-  cleanup block, in `packages/pty-daemon/src/Pty/Pty.ts`)
+  cleanup block, in `packages/pty-daemon/src/Pty/Pty.ts`);
+  `900cff632` (2026-07-22 merge: upstream #5823 added two new daemon integration
+  tests that hardcoded a Unix `.sock` path + `existsSync` readiness — adapted
+  both to `makeTestDaemonSocketPath` + the `isWindowsNamedPipe ? canConnect :
+  existsSync` readiness check, matching the sibling tests in
+  `packages/host-service/test/integration/terminal.integration.test.ts`. New
+  daemon integration tests must use the named-pipe-aware helpers, never a raw
+  `.sock` path.)
 - **Override policy:** **LOCKED.** Upstream targets macOS/Linux; there is no
   upstream Windows port to defer to. Later, finer-grained W-entries refine and
   extend this base; verify them individually as they are migrated in.

@@ -400,7 +400,7 @@ describe("terminal router integration", () => {
 
 	test("reaper kills a dispose-stamped session and spares a live one", async () => {
 		const tmp = mkdtempSync(join(tmpdir(), "host-service-reaper-retry-"));
-		const socketPath = join(tmp, "pty-daemon.sock");
+		const socketPath = makeTestDaemonSocketPath("host-service-reaper-retry");
 		const stampedId = randomUUID();
 		const sparedId = randomUUID();
 		let daemonProcess: ChildProcess | null = null;
@@ -418,7 +418,13 @@ describe("terminal router integration", () => {
 					env: { ...process.env },
 				},
 			);
-			await waitFor(() => existsSync(socketPath), 3000);
+			await waitFor(
+				() =>
+					isWindowsNamedPipe(socketPath)
+						? canConnect(socketPath)
+						: existsSync(socketPath),
+				3000,
+			);
 			process.env.SUPERSET_PTY_DAEMON_SOCKET = socketPath;
 			process.env.SUPERSET_HOME_DIR = tmp;
 
@@ -487,7 +493,7 @@ describe("terminal router integration", () => {
 
 	test("listSessions and countBackgroundSessions see unattached daemon sessions after a host-service restart", async () => {
 		const tmp = mkdtempSync(join(tmpdir(), "host-service-session-truth-"));
-		const socketPath = join(tmp, "pty-daemon.sock");
+		const socketPath = makeTestDaemonSocketPath("host-service-session-truth");
 		const terminalId = randomUUID();
 		const stampedTerminalId = randomUUID();
 		let daemonProcess: ChildProcess | null = null;
@@ -504,7 +510,13 @@ describe("terminal router integration", () => {
 					env: { ...process.env },
 				},
 			);
-			await waitFor(() => existsSync(socketPath), 3000);
+			await waitFor(
+				() =>
+					isWindowsNamedPipe(socketPath)
+						? canConnect(socketPath)
+						: existsSync(socketPath),
+				3000,
+			);
 			process.env.SUPERSET_PTY_DAEMON_SOCKET = socketPath;
 			process.env.SUPERSET_HOME_DIR = tmp;
 
