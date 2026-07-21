@@ -297,110 +297,118 @@ describe("createTerminalSessionInternal — host-service restart adoption", () =
 		},
 	);
 
-	test("initialCommand waits for a verified shell-ready marker", {
-		skip: IS_WINDOWS ? "POSIX zsh/bash readiness marker" : false,
-	}, async () => {
-		const terminalId = `e2e-delayed-marker-${randomUUID().slice(0, 8)}`;
-		const sentinelFile = path.join(TEST_HOME, `delayed-marker-${terminalId}`);
-		const fakeShellDir = path.join(TEST_HOME, `fake-shell-${terminalId}`);
-		const fakeZsh = path.join(fakeShellDir, "zsh");
-		const zshWrapperDir = path.join(TEST_HOME, "zsh");
+	test(
+		"initialCommand waits for a verified shell-ready marker",
+		{
+			skip: IS_WINDOWS ? "POSIX zsh/bash readiness marker" : false,
+		},
+		async () => {
+			const terminalId = `e2e-delayed-marker-${randomUUID().slice(0, 8)}`;
+			const sentinelFile = path.join(TEST_HOME, `delayed-marker-${terminalId}`);
+			const fakeShellDir = path.join(TEST_HOME, `fake-shell-${terminalId}`);
+			const fakeZsh = path.join(fakeShellDir, "zsh");
+			const zshWrapperDir = path.join(TEST_HOME, "zsh");
 
-		fs.mkdirSync(fakeShellDir, { recursive: true });
-		fs.mkdirSync(zshWrapperDir, { recursive: true });
-		fs.writeFileSync(
-			fakeZsh,
-			[
-				"#!/bin/bash",
-				// Simulate an interactive startup process consuming already-buffered
-				// input before returning control to the shell.
-				"sleep 0.5",
-				"IFS= read -r -t 0.5 _discarded || true",
-				"printf '\\033]133;A\\007'",
-				"exec /bin/bash --noprofile --norc -i",
-				"",
-			].join("\n"),
-			{ mode: 0o755 },
-		);
-		fs.writeFileSync(path.join(zshWrapperDir, ".zshrc"), "# wrapper\n");
-		fs.writeFileSync(
-			path.join(zshWrapperDir, ".zlogin"),
-			'printf "\\033]133;A\\007"\n',
-		);
-
-		__setAccountShellForTesting(fakeZsh);
-		try {
-			const start = Date.now();
-			const result = await createTerminalSessionInternal({
-				terminalId,
-				workspaceId,
-				db,
-				listed: true,
-				initialCommand: `echo ok > "${sentinelFile}"`,
-			});
-			assert.ok(!("error" in result));
-			if ("error" in result) return;
-
-			await waitFor(() => fs.existsSync(sentinelFile), 5000);
-			assert.ok(
-				Date.now() - start >= 450,
-				"expected initialCommand to wait for delayed shell readiness",
+			fs.mkdirSync(fakeShellDir, { recursive: true });
+			fs.mkdirSync(zshWrapperDir, { recursive: true });
+			fs.writeFileSync(
+				fakeZsh,
+				[
+					"#!/bin/bash",
+					// Simulate an interactive startup process consuming already-buffered
+					// input before returning control to the shell.
+					"sleep 0.5",
+					"IFS= read -r -t 0.5 _discarded || true",
+					"printf '\\033]133;A\\007'",
+					"exec /bin/bash --noprofile --norc -i",
+					"",
+				].join("\n"),
+				{ mode: 0o755 },
 			);
-		} finally {
-			await disposeSessionAndWait(terminalId, db);
-			// Restore the suite-wide shell override established in before().
-			__setAccountShellForTesting("/bin/sh");
-			fs.rmSync(fakeShellDir, { recursive: true, force: true });
-			fs.rmSync(zshWrapperDir, { recursive: true, force: true });
-		}
-	});
+			fs.writeFileSync(path.join(zshWrapperDir, ".zshrc"), "# wrapper\n");
+			fs.writeFileSync(
+				path.join(zshWrapperDir, ".zlogin"),
+				'printf "\\033]133;A\\007"\n',
+			);
 
-	test("cancels initialCommand when the shell exits before readiness", {
-		skip: IS_WINDOWS ? "POSIX zsh/bash readiness marker" : false,
-	}, async () => {
-		const terminalId = `e2e-exit-before-marker-${randomUUID().slice(0, 8)}`;
-		const sentinelFile = path.join(
-			TEST_HOME,
-			`exit-before-marker-${terminalId}`,
-		);
-		const fakeShellDir = path.join(TEST_HOME, `fake-shell-${terminalId}`);
-		const fakeZsh = path.join(fakeShellDir, "zsh");
-		const zshWrapperDir = path.join(TEST_HOME, "zsh");
+			__setAccountShellForTesting(fakeZsh);
+			try {
+				const start = Date.now();
+				const result = await createTerminalSessionInternal({
+					terminalId,
+					workspaceId,
+					db,
+					listed: true,
+					initialCommand: `echo ok > "${sentinelFile}"`,
+				});
+				assert.ok(!("error" in result));
+				if ("error" in result) return;
 
-		fs.mkdirSync(fakeShellDir, { recursive: true });
-		fs.mkdirSync(zshWrapperDir, { recursive: true });
-		fs.writeFileSync(fakeZsh, "#!/bin/bash\nsleep 0.1\nexit 17\n", {
-			mode: 0o755,
-		});
-		fs.writeFileSync(path.join(zshWrapperDir, ".zshrc"), "# wrapper\n");
-		fs.writeFileSync(
-			path.join(zshWrapperDir, ".zlogin"),
-			'printf "\\033]133;A\\007"\n',
-		);
+				await waitFor(() => fs.existsSync(sentinelFile), 5000);
+				assert.ok(
+					Date.now() - start >= 450,
+					"expected initialCommand to wait for delayed shell readiness",
+				);
+			} finally {
+				await disposeSessionAndWait(terminalId, db);
+				// Restore the suite-wide shell override established in before().
+				__setAccountShellForTesting("/bin/sh");
+				fs.rmSync(fakeShellDir, { recursive: true, force: true });
+				fs.rmSync(zshWrapperDir, { recursive: true, force: true });
+			}
+		},
+	);
 
-		__setAccountShellForTesting(fakeZsh);
-		try {
-			const result = await createTerminalSessionInternal({
-				terminalId,
-				workspaceId,
-				db,
-				listed: true,
-				initialCommand: `echo should-not-run > "${sentinelFile}"`,
+	test(
+		"cancels initialCommand when the shell exits before readiness",
+		{
+			skip: IS_WINDOWS ? "POSIX zsh/bash readiness marker" : false,
+		},
+		async () => {
+			const terminalId = `e2e-exit-before-marker-${randomUUID().slice(0, 8)}`;
+			const sentinelFile = path.join(
+				TEST_HOME,
+				`exit-before-marker-${terminalId}`,
+			);
+			const fakeShellDir = path.join(TEST_HOME, `fake-shell-${terminalId}`);
+			const fakeZsh = path.join(fakeShellDir, "zsh");
+			const zshWrapperDir = path.join(TEST_HOME, "zsh");
+
+			fs.mkdirSync(fakeShellDir, { recursive: true });
+			fs.mkdirSync(zshWrapperDir, { recursive: true });
+			fs.writeFileSync(fakeZsh, "#!/bin/bash\nsleep 0.1\nexit 17\n", {
+				mode: 0o755,
 			});
-			assert.ok(!("error" in result));
-			if ("error" in result) return;
+			fs.writeFileSync(path.join(zshWrapperDir, ".zshrc"), "# wrapper\n");
+			fs.writeFileSync(
+				path.join(zshWrapperDir, ".zlogin"),
+				'printf "\\033]133;A\\007"\n',
+			);
 
-			await waitFor(() => result.exited, 5000);
-			await result.shellReadyPromise;
-			assert.equal(result.shellReadyState, "cancelled");
-			assert.equal(fs.existsSync(sentinelFile), false);
-		} finally {
-			await disposeSessionAndWait(terminalId, db);
-			__setAccountShellForTesting("/bin/sh");
-			fs.rmSync(fakeShellDir, { recursive: true, force: true });
-			fs.rmSync(zshWrapperDir, { recursive: true, force: true });
-		}
-	});
+			__setAccountShellForTesting(fakeZsh);
+			try {
+				const result = await createTerminalSessionInternal({
+					terminalId,
+					workspaceId,
+					db,
+					listed: true,
+					initialCommand: `echo should-not-run > "${sentinelFile}"`,
+				});
+				assert.ok(!("error" in result));
+				if ("error" in result) return;
+
+				await waitFor(() => result.exited, 5000);
+				await result.shellReadyPromise;
+				assert.equal(result.shellReadyState, "cancelled");
+				assert.equal(fs.existsSync(sentinelFile), false);
+			} finally {
+				await disposeSessionAndWait(terminalId, db);
+				__setAccountShellForTesting("/bin/sh");
+				fs.rmSync(fakeShellDir, { recursive: true, force: true });
+				fs.rmSync(zshWrapperDir, { recursive: true, force: true });
+			}
+		},
+	);
 
 	test("rejects reusing a live terminal id from another workspace", async () => {
 		const terminalId = `e2e-cross-live-${randomUUID().slice(0, 8)}`;
