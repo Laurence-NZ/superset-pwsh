@@ -17,15 +17,10 @@ import type { HostDb } from "../../../db";
 import { hostAgentConfigs, workspaces } from "../../../db/schema";
 import { getTerminalBaseEnv } from "../../../terminal/env";
 import { resolveLaunchShell } from "../../../terminal/shell-launch";
-import {
-	createTerminalSessionInternal,
-	disposeSessionAndWait,
-} from "../../../terminal/terminal";
+import { createTerminalSessionInternal } from "../../../terminal/terminal";
 import type { HostServiceContext } from "../../../types";
 import { protectedProcedure, router } from "../../index";
 import { resolveAttachmentPath } from "../attachments/storage";
-import { waitForAgentLaunch, withPreparedAgentLaunch } from "./agent-launch";
-import { buildAttachmentBlock } from "./attachment-prompt";
 
 interface ResolvedHostAgentConfig {
 	id: string;
@@ -123,10 +118,11 @@ export function resolveHostAgentConfig(
  * launches — emptiness is only knowable after sanitization, so the check
  * lives here rather than in the router's zod schema.
  *
- * W20: Windows-only. The POSIX launcher-script pipeline
- * (withPreparedAgentLaunch) can't run on Windows (it invokes `/bin/sh` with a
- * `/dev/tty` script), so on win32 runTerminalAgent types this shell-aware
- * command directly into the terminal instead.
+ * W20: the resolved terminal shell is threaded through so buildArgvCommand /
+ * envOverlayPrefix can quote for it. PowerShell parses a leading single-quoted
+ * string as an expression and rejects the following token (ParserError), so
+ * pwsh needs bare command names and the `&` call operator, not POSIX quoting.
+ * POSIX output is unchanged when shell is a POSIX shell / undefined.
  */
 export function buildAgentCommandString(
 	config: ResolvedHostAgentConfig,
@@ -159,6 +155,16 @@ export function buildAgentCommandString(
 		prompt,
 		randomId,
 	});
+}
+
+function buildAttachmentBlock(
+	prompt: string,
+	resolved: Array<{ attachmentId: string; path: string }>,
+): string {
+	if (resolved.length === 0) return prompt;
+	const lines = resolved.map((item) => `- ${item.path}`);
+	const block = `\n\n# Attached files\n\nThe user attached these files. They are available on this host at:\n\n${lines.join("\n")}`;
+	return prompt + block;
 }
 
 export interface AgentRunInput {
@@ -236,7 +242,7 @@ async function runChatAgent(
 }
 
 async function runTerminalAgent(
-	ctx: HostServiceContext,
+	ctx: { db: HostDb; eventBus: import("../../../events").EventBus },
 	input: AgentRunInput,
 ): Promise<AgentRunResult> {
 	const config = resolveHostAgentConfig(ctx.db, input.agent);
@@ -259,95 +265,43 @@ async function runTerminalAgent(
 		resolvedAttachments.push({ attachmentId, path: resolved.path });
 	}
 
-	const prompt = sanitizePromptForPty(
-		buildAttachmentBlock(input.prompt, resolvedAttachments),
-	);
+	const prompt = buildAttachmentBlock(input.prompt, resolvedAttachments);
 	const modelArgs = buildAgentModelArgs(config.presetId, input.model);
 	const effortArgs = buildAgentEffortArgs(config.presetId, input.effort);
+	// W20: quote/invoke for the shell the terminal will actually launch (pwsh on
+	// Windows needs the `&` call operator; see buildArgvCommand). POSIX unchanged.
+	const shell = resolveLaunchShell(getTerminalBaseEnv());
+	const command = buildAgentCommandString(
+		config,
+		prompt,
+		[...modelArgs, ...effortArgs],
+		undefined,
+		shell,
+	);
 	const modelEnv = buildAgentModelEnv(config.presetId, input.model);
+	const fullCommand = `${envOverlayPrefix({ ...config.env, ...modelEnv }, { shell })}${command}`;
 
-	// W20: Windows can't use the POSIX launcher-script pipeline below
-	// (withPreparedAgentLaunch invokes `/bin/sh` on a `/dev/tty` script). Type
-	// the shell-aware agent command straight into the terminal instead —
-	// quote/invoke for the shell the terminal will actually launch (pwsh needs
-	// the `&` call operator; see buildArgvCommand). No file-ack wait: that
-	// acknowledgement protocol lives in the POSIX launcher script.
-	if (process.platform === "win32") {
-		const shell = resolveLaunchShell(getTerminalBaseEnv());
-		const command = buildAgentCommandString(
-			config,
-			prompt,
-			[...modelArgs, ...effortArgs],
-			undefined,
-			shell,
-		);
-		const fullCommand = `${envOverlayPrefix({ ...config.env, ...modelEnv }, { shell })}${command}`;
-		const terminalId = crypto.randomUUID();
-		const result = await createTerminalSessionInternal({
-			terminalId,
-			workspaceId: input.workspaceId,
-			db: ctx.db,
-			eventBus: ctx.eventBus,
-			initialCommand: fullCommand,
+	const terminalId = crypto.randomUUID();
+	const result = await createTerminalSessionInternal({
+		terminalId,
+		workspaceId: input.workspaceId,
+		db: ctx.db,
+		eventBus: ctx.eventBus,
+		initialCommand: fullCommand,
+	});
+
+	if ("error" in result) {
+		throw new TRPCError({
+			code: "INTERNAL_SERVER_ERROR",
+			message: result.error,
 		});
-		if ("error" in result) {
-			throw new TRPCError({
-				code: "INTERNAL_SERVER_ERROR",
-				message: result.error,
-			});
-		}
-		return {
-			kind: "terminal",
-			sessionId: result.terminalId,
-			label: config.label,
-		};
 	}
 
-	return withPreparedAgentLaunch(
-		{
-			command: config.command,
-			args: [...config.args, ...modelArgs, ...effortArgs],
-			promptArgs: config.promptArgs,
-			promptTransport: config.promptTransport,
-			prompt,
-			env: { ...config.env, ...modelEnv },
-		},
-		async (launch) => {
-			const terminalId = crypto.randomUUID();
-			const result = await createTerminalSessionInternal({
-				terminalId,
-				workspaceId: input.workspaceId,
-				db: ctx.db,
-				eventBus: ctx.eventBus,
-				initialCommand: launch.initialCommand,
-			});
-
-			if ("error" in result) {
-				throw new TRPCError({
-					code: "INTERNAL_SERVER_ERROR",
-					message: result.error,
-				});
-			}
-
-			try {
-				await waitForAgentLaunch(launch);
-			} catch (error) {
-				await disposeSessionAndWait(terminalId, ctx.db).catch(() => undefined);
-				throw new TRPCError({
-					code: "INTERNAL_SERVER_ERROR",
-					message:
-						error instanceof Error ? error.message : "Agent failed to start",
-					cause: error,
-				});
-			}
-
-			return {
-				kind: "terminal" as const,
-				sessionId: result.terminalId,
-				label: config.label,
-			};
-		},
-	);
+	return {
+		kind: "terminal",
+		sessionId: result.terminalId,
+		label: config.label,
+	};
 }
 
 export async function runAgentInWorkspace(

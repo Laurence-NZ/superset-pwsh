@@ -29,7 +29,6 @@
 		"dev:relay": "turbo dev --filter=@superset/relay",
 		"build": "turbo build --filter=@superset/desktop",
 		"test": "turbo test --concurrency=2",
-		"test:cli-e2e": "bun run --cwd packages/cli test:e2e:agents",
 		"lint": "bun run scripts/lint.ts",
 		"check:desktop-git-env": "bun run scripts/lint.ts --skip-biome",
 		"lint:fix": "bunx @biomejs/biome@2.4.2 migrate --write && bunx @biomejs/biome@2.4.2 check --write --unsafe .",
@@ -63,7 +62,7 @@
 		"axios": "1.14.0",
 		"hono": "4.12.25",
 		"kysely": "0.28.17",
-		"shell-quote": "1.8.4"
+		"shell-quote": "1.9.0"
 	},
 	"patchedDependencies": {
 		"native-keymap@3.3.9": "patches/native-keymap@3.3.9.patch"

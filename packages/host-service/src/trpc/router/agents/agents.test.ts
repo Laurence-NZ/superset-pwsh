@@ -1,6 +1,5 @@
 import { describe, expect, it } from "bun:test";
 import { buildAgentCommandString } from "./agents";
-import { buildAttachmentBlock } from "./attachment-prompt";
 
 const argvConfig = {
 	id: "00000000-0000-0000-0000-000000000001",
@@ -27,30 +26,9 @@ const stdinConfig = {
 const RANDOM_ID = "test-1234";
 const DELIMITER = "SUPERSET_PROMPT_test1234";
 
-describe("buildAttachmentBlock", () => {
-	it("keeps the complete prompt and every resolved attachment path", () => {
-		const prompt = `${"large prompt 🎉\n".repeat(4096)}tail\n`;
-		const attachments = Array.from({ length: 300 }, (_, index) => ({
-			attachmentId: `attachment-${index}`,
-			path: `/tmp/attached files/trace-${index}-中文.log`,
-		}));
-
-		const result = buildAttachmentBlock(prompt, attachments);
-
-		expect(result.startsWith(prompt)).toBe(true);
-		expect(result).toContain("# Attached files");
-		expect(result).toContain("/tmp/attached files/trace-0-中文.log");
-		expect(result).toEndWith("- /tmp/attached files/trace-299-中文.log");
-	});
-
-	it("does not alter prompts without attachments", () => {
-		expect(buildAttachmentBlock("prompt\n", [])).toBe("prompt\n");
-	});
-});
-
-// W7/W20: buildAgentCommandString is the Windows-only shell-aware launch path
-// (runTerminalAgent's win32 branch). These cover the POSIX quoting/chaining it
-// must keep producing; the pwsh-specific quoting is covered in the shared
+// W7/W20: buildAgentCommandString is the shell-aware launch path threaded
+// through runTerminalAgent. These cover the POSIX quoting/chaining it must keep
+// producing; the pwsh-specific quoting is covered in the shared
 // packages/shared agent-prompt-launch tests.
 describe("buildAgentCommandString", () => {
 	it("appends the prompt as a quoted positional (argv transport)", () => {
