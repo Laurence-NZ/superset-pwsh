@@ -87,7 +87,19 @@ extended, or removed) so the user knows the SSOT moved.
 - `bun run typecheck` — upstream frequently changes a shared helper's signature (`resolveScript`, `writeTempAskpass`, …) that the Windows layer builds on; the types break with no conflict marker. Must pass.
 - `bun run lint` must exit 0 (CI treats warnings as errors). `biome lineEnding` stays `lf` — never let it flip to `auto`. Run `bun run lint:fix` for auto-fixes.
 
-## 6. Report what to test locally
+## 6. Report
+
+### 6a. What merged upstream and why
+
+Lead the report with a breakdown of the commits pulled in: for **every** merged
+commit, give its PR subject and a one-line **goal** (what problem it solves /
+what it enables), derived from the subject + the diff you already read while
+resolving. Group related commits by theme (e.g. desktop v2 UI, terminal/agent
+infra, pty-daemon, mobile, docs) rather than listing flat. Fold pure-docs/copy
+commits into one line. Close with the net theme — where upstream is investing —
+and flag which of those areas collided with the Windows patches.
+
+### 6b. What to test locally
 
 The user validates by running `bun run dev:desktop`. Do not claim runtime
 correctness — you can't observe it. List concrete things to check, driven by
