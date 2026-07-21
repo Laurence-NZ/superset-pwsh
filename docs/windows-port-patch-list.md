@@ -491,22 +491,28 @@ For **each** patch entry:
 
 ## W20 — V2 agent launch commands quoted for the target shell
 
-- **Commits:** `c4eb36c61` (see also **W7** `6483e7884` for `&&` preservation);
-  `1346623b8` (2026-07-21 merge) + `682fe061a` (test restore). Upstream #5784
-  replaced the "type the shell-aware command straight into the terminal" path
-  with a **POSIX launcher-script pipeline** (`withPreparedAgentLaunch` /
-  `prepareAgentLaunch` in `agent-launch.ts`): it writes a `#!/bin/sh` script that
-  uses `exec … < /dev/tty` + a `kill -0` ack file and types `/bin/sh <path>` into
-  the terminal. That is fundamentally POSIX-only (no `/bin/sh`, no `/dev/tty` on
-  Windows) and is **not** an upstream Windows equivalent to adopt. Re-applied W20
-  as a **`process.platform === "win32"` branch** in `runTerminalAgent`: on win32
-  keep the shell-aware `buildAgentCommandString` + `envOverlayPrefix` direct-type
-  path (no file-ack wait — that protocol lives in the POSIX launcher); POSIX uses
-  upstream's new pipeline. `buildAgentCommandString` is retained in `agents.ts`
-  solely for this win32 branch (upstream deleted it).
-- **Override policy:** **LOCKED** (pwsh parser semantics). New sub-invariant: the
-  POSIX launcher-script pipeline must stay win32-guarded — it can never be the
-  Windows launch path.
+- **Commits:** `c4eb36c61` (original unified form — shell threaded through
+  `buildAgentCommandString` in `runTerminalAgent`, no branch); see also **W7**
+  `6483e7884` for `&&` preservation; `1346623b8` (2026-07-21 merge) +
+  `682fe061a` (test restore, both since superseded); `900cff632` (2026-07-22
+  merge). **History:** upstream #5784 had replaced the direct-type path with a
+  POSIX launcher-script pipeline (`withPreparedAgentLaunch` / `prepareAgentLaunch`
+  in `agent-launch.ts` — a `#!/bin/sh` script using `exec … < /dev/tty` + a
+  `kill -0` ack file), so on the 2026-07-21 merge W20 was re-applied as a
+  `process.platform === "win32"` **branch** in `runTerminalAgent`. On the
+  2026-07-22 merge upstream **reverted #5784** (`cdf55f9e0`), deleting
+  `agent-launch.ts` + `attachment-prompt.ts` and restoring the pre-#5784
+  unified direct-type path for all platforms. W20 therefore **collapsed back to
+  its original `c4eb36c61` form**: no win32 branch — `runTerminalAgent` resolves
+  the launch shell once (`resolveLaunchShell(getTerminalBaseEnv())`) and threads
+  it through `buildAgentCommandString` + `envOverlayPrefix` for everyone (POSIX
+  output unchanged). `buildAgentCommandString` lives in `agents.ts` and is the
+  sole launch path again.
+- **Override policy:** **LOCKED** (pwsh parser semantics). **Re-introduction
+  trigger:** if upstream re-lands a `/bin/sh` + `/dev/tty` launcher-script
+  pipeline (#5784 or similar), it can never be the Windows launch path — re-add
+  the `process.platform === "win32"` branch that keeps the direct-type
+  `buildAgentCommandString` path (see the 2026-07-21 history above for the shape).
 - **Why:** POSIX single-quoting (`'claude' 'build a boat'`) is a PowerShell
   `ParserError` — pwsh reads a leading quoted string as an expression and rejects
   the following token.
@@ -521,16 +527,14 @@ For **each** patch entry:
   claude are wired for pwsh), `cmd.exe` isn't handled, and
   `buildHostAgentLaunchCommand` in `apps/web` passes no shell.
 - **Where:** `packages/shared/src/agent-prompt-launch.ts` (`buildArgvCommand`,
-  `envOverlayPrefix`); shell threaded from `runTerminalAgent`'s win32 branch →
-  `buildAgentCommandString` (both in
-  `packages/host-service/src/trpc/router/agents/agents.ts`). The POSIX pipeline
-  it bypasses on win32 lives in the same dir's `agent-launch.ts`
-  (`withPreparedAgentLaunch` / `prepareAgentLaunch` / `waitForAgentLaunch`).
+  `envOverlayPrefix`); the launch shell is resolved in `runTerminalAgent` and
+  threaded through `buildAgentCommandString` (both in
+  `packages/host-service/src/trpc/router/agents/agents.ts`).
 - **Scan for:** new agent-launch quoting that assumes POSIX single-quotes; a new
   launch path that doesn't thread the target shell through; **any change that
-  routes `runTerminalAgent` through `withPreparedAgentLaunch` without the win32
-  guard** (the launcher script is `/bin/sh` + `/dev/tty`, dead on Windows), or a
-  new `prepareAgentLaunch` caller with no win32 branch.
+  routes `runTerminalAgent` through a `/bin/sh` + `/dev/tty` launcher script
+  without a win32 guard** (re-introduction of #5784), or a new launcher-script
+  caller with no win32 branch.
 
 ## W21 — pty-daemon `hasRunningForegroundProcess` guarded on win32
 
@@ -652,11 +656,16 @@ notify the user and switch to theirs.
 
 ## F1 — Stopgap "commits to pull" (↓N) badge in the v2 sidebar
 
-- **Commits:** `f9cf9d131`
+- **Commits:** `f9cf9d131`; `900cff632` (2026-07-22 merge: upstream #5824
+  reorganized the sidebar chrome and now gates the *diff-stats* display on
+  `isActive`. Kept the ↓N behind badge un-gated (its whole purpose is surfacing
+  pull-needed workspaces at a glance across rows) and applied upstream's
+  `isActive` gate to the diff-stats portion only.)
 - **Override policy:** **OVERRIDABLE — and flagged DELETE ON MERGE.** Upstream
   `getBranchSyncStatus.pullCount` already exists; prefer wiring the sidebar to
   that (plus a fetch) over keeping this. If upstream ships a real ahead/behind
-  indicator, delete all three pieces below and notify the user.
+  indicator, delete all three pieces below and notify the user. (#5824 was a
+  chrome reorg, **not** an ahead/behind indicator — the stopgap stays.)
 - **What:** three coupled pieces, each carrying a `STOPGAP … DELETE ON MERGE`
   banner. Deliberately a *separate* procedure (not folded into
   `getBranchSyncStatus`, which the PR flow shares) so it reverts cleanly. The
