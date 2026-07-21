@@ -7,6 +7,7 @@ import { strict as assert } from "node:assert";
 import * as fs from "node:fs";
 import { after, before, test } from "node:test";
 import { adoptFromFd, spawn as spawnPty } from "../src/Pty/Pty.ts";
+import { CURRENT_PROTOCOL_VERSION } from "../src/protocol/index.ts";
 import { Server } from "../src/Server/index.ts";
 import { connect, connectAndHello, payloadAsString } from "./helpers/client.ts";
 import {
@@ -31,11 +32,11 @@ after(async () => {
 
 test("handshake: hello → hello-ack", { timeout: 10_000 }, async () => {
 	const c = await connect(sockPath);
-	c.send({ type: "hello", protocols: [2] });
+	c.send({ type: "hello", protocols: [CURRENT_PROTOCOL_VERSION] });
 	const ack = await c.waitFor((m) => m.type === "hello-ack");
 	assert.equal(ack.type, "hello-ack");
 	if (ack.type === "hello-ack") {
-		assert.equal(ack.protocol, 2);
+		assert.equal(ack.protocol, CURRENT_PROTOCOL_VERSION);
 		assert.equal(ack.daemonVersion, "0.0.0-test");
 	}
 	await c.close();
@@ -123,16 +124,47 @@ test("Pty.getMasterFd returns a usable kernel fd", { timeout: 10_000 }, () => {
 test("adoptFromFd validates inputs", { timeout: 10_000 }, () => {
 	const meta = commandMeta("");
 	assert.throws(() => adoptFromFd({ fd: -1, pid: 1, meta }), /invalid fd/);
-	assert.throws(() => adoptFromFd({ fd: 3, pid: 0, meta }), /invalid pid/);
-	assert.throws(
-		() =>
-			adoptFromFd({
-				fd: 3,
-				pid: 1,
-				meta: { ...meta, cols: 0 },
-			}),
-		/invalid cols/,
-	);
+
+	const invalidPidFd = fs.openSync("/dev/null", "r");
+	try {
+		assert.throws(
+			() => adoptFromFd({ fd: invalidPidFd, pid: 0, meta }),
+			/invalid pid/,
+		);
+		assert.throws(
+			() => fs.fstatSync(invalidPidFd),
+			(err: unknown) => (err as NodeJS.ErrnoException).code === "EBADF",
+		);
+	} finally {
+		try {
+			fs.closeSync(invalidPidFd);
+		} catch {
+			// adoptFromFd closed it as required
+		}
+	}
+
+	const invalidDimsFd = fs.openSync("/dev/null", "r");
+	try {
+		assert.throws(
+			() =>
+				adoptFromFd({
+					fd: invalidDimsFd,
+					pid: 1,
+					meta: { ...meta, cols: 0 },
+				}),
+			/invalid cols/,
+		);
+		assert.throws(
+			() => fs.fstatSync(invalidDimsFd),
+			(err: unknown) => (err as NodeJS.ErrnoException).code === "EBADF",
+		);
+	} finally {
+		try {
+			fs.closeSync(invalidDimsFd);
+		} catch {
+			// adoptFromFd closed it as required
+		}
+	}
 });
 
 test("adoptFromFd wraps a real PTY master fd without crashing", async () => {

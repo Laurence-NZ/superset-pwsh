@@ -62,6 +62,7 @@ function makeDriveablePty(meta: SpawnOptions["meta"]): DriveablePty {
 		},
 		resize: () => {},
 		kill: () => {},
+		dispose: () => {},
 		getMasterFd: () => -1,
 		pause: () => {},
 		resume: () => {},
