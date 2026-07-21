@@ -608,6 +608,33 @@ For **each** patch entry:
 - **Scan for:** changes reverting Alt to a Mac-only app modifier, or a new
   modifier-capture path that drops pure-Alt on non-Mac.
 
+## W26 — win32 daemon auto-update refuses while sessions are alive
+
+- **Commits:** part of `61132970e` (foundational `runWindowsUpdate`); documented
+  + re-guarded on the 2026-07-22 merge (upstream #4a8967a84 deleted the shared
+  `countAliveSessions` helper — inlined the count in the win32 path).
+- **Override policy:** **LOCKED** (Windows ConPTY has no fd-handoff). Not a
+  candidate to adopt upstream's "update even with live sessions" behaviour —
+  that's provably impossible on Windows.
+- **Why:** upstream's daemon auto-update preserves live PTYs across the restart
+  via fd-handoff (POSIX). Windows ConPTY can't hand off fds, so updating a
+  daemon with live sessions would kill the user's shells. `runWindowsUpdate`
+  refuses the update while any session is alive and tells the user to close
+  them first. Upstream #4a8967a84 ("attempt daemon auto-update even when live
+  sessions are present") removed the alive-session gate from the POSIX path and
+  **deleted the shared `countAliveSessions` helper the win32 path also used** —
+  a silent break (no conflict marker): `runWindowsUpdate` still compiled-referenced
+  a now-missing function. Fixed by inlining `sessions.filter(s => s.alive).length`
+  in the win32 path.
+- **Where:** `packages/host-service/src/daemon/DaemonSupervisor.ts`
+  (`runWindowsUpdate`, the `aliveSessionCount` gate).
+- **Scan for:** upstream changes to the daemon update / auto-update paths that
+  drop or relax the win32 live-session refusal; deletion of a shared
+  alive-session helper that `runWindowsUpdate` depends on (inline it); a new
+  win32 update path that hands off fds as if ConPTY supported it.
+- **Symptom if broken:** a Windows daemon auto-update either fails to compile
+  (missing helper) or silently kills the user's live terminals on update.
+
 ---
 
 # §2 — Features & fixes

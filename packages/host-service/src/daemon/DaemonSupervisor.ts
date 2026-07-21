@@ -444,7 +444,13 @@ export class DaemonSupervisor {
 			await client.dispose().catch(() => {});
 		}
 
-		const aliveSessionCount = countAliveSessions(sessions);
+		// Windows daemon updates can't hand off live PTY fds (ConPTY), so refuse
+		// while any session is alive. Upstream #4a8967a84 dropped the shared
+		// countAliveSessions helper when it removed this gate from the POSIX
+		// update path; inline the count here for the win32-only path that keeps it.
+		const aliveSessionCount = sessions.filter(
+			(session) => session.alive,
+		).length;
 		if (aliveSessionCount > 0) {
 			return {
 				ok: false,
