@@ -84,6 +84,7 @@ extended, or removed) so the user knows the SSOT moved.
 ## 5. Validate
 
 - Run `bun i` to ensure dependencies are up-to-date.
+- **Refresh native modules if any bumped.** `electron-builder install-app-deps` copies native modules (`node-pty`, `better-sqlite3`, `native-keymap`) into `apps/desktop/node_modules` as **real dirs** rebuilt for Electron's ABI. `bun i` will **not** overwrite a real dir — it reports "no changes" even when the lockfile bumped the version, so the module silently keeps running old code (e.g. a stale `node-pty` reintroduces the Windows `AttachConsole`/5s-kill bug). If the merge changed any of those versions in the lockfile, clear and reinstall: `rm -rf apps/desktop/node_modules/{node-pty,better-sqlite3,native-keymap} && bun i`. A refreshed module is a **symlink** into `node_modules/.bun/<pkg>@<version>/...`, not a real dir — verify that.
 - `bun run typecheck` — upstream frequently changes a shared helper's signature (`resolveScript`, `writeTempAskpass`, …) that the Windows layer builds on; the types break with no conflict marker. Must pass.
 - `bun run lint` must exit 0 (CI treats warnings as errors). `biome lineEnding` stays `lf` — never let it flip to `auto`. Run `bun run lint:fix` for auto-fixes.
 
