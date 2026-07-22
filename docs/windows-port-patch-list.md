@@ -63,10 +63,12 @@ For **each** patch entry:
   `mainEnv` — packaged-build URL sanitization choke point in
   `apps/desktop/src/main/index.ts` / `desktop-runtime-flags.ts`);
   `1346623b8` (2026-07-21 merge: upstream bumped `node-pty` `1.1.0` →
-  `1.2.0-beta.14` and wrapped `pty-daemon` `spawn()` in try/catch cleanup —
-  re-kept the `getMasterFd()` win32 guard (`_fd` handoff is POSIX-only) and made
-  the spawn-time fd validation `if (process.platform !== "win32")` inside the new
-  cleanup block, in `packages/pty-daemon/src/Pty/Pty.ts`);
+  `1.2.0-beta.14` — upstream commit `7515dd410` / #5795 — and wrapped
+  `pty-daemon` `spawn()` in try/catch cleanup — re-kept the `getMasterFd()` win32
+  guard (`_fd` handoff is POSIX-only) and made the spawn-time fd validation
+  `if (process.platform !== "win32")` inside the new cleanup block, in
+  `packages/pty-daemon/src/Pty/Pty.ts`. This beta's ConPTY teardown fragility is
+  what later required **W27** — see there);
   `900cff632` (2026-07-22 merge: upstream #5823 added two new daemon integration
   tests that hardcoded a Unix `.sock` path + `existsSync` readiness — adapted
   both to `makeTestDaemonSocketPath` + the `isWindowsNamedPipe ? canConnect :
@@ -663,8 +665,14 @@ For **each** patch entry:
   the daemon exits **`0xC0000374` (STATUS_HEAP_CORRUPTION)**. One daemon owns
   every PTY in the org, so its crash drops all terminals; the respawned empty
   daemon makes W12 tombstone every pane "Previous session (ended)". Pre-existing
-  since the 2026-07-21 node-pty `1.1.0 → 1.2.0-beta.14` bump; **not** a merge
-  regression (confirmed reproducing on the pre-merge build). **Dead-end (do not
+  since the node-pty `1.1.0 → 1.2.0-beta.14` bump — upstream commit `7515dd410`
+  (#5795), pulled into the fork by the 2026-07-21 merge `1346623b8`; **not** a
+  merge regression (confirmed reproducing on the pre-merge build). The bump is an
+  **upstream** commit on `origin/main`, so the fix lives here in W27, never in
+  `7515dd410` (rewriting an upstream commit would break every future
+  `/merge-upstream`). **Removal trigger:** if a later node-pty release fixes the
+  ConPTY-close-while-writing corruption, this whole workaround (useConptyDll +
+  coordinated teardown + asset copy) can likely be dropped. **Dead-end (do not
   retry):** merely skipping `term.destroy()` on win32 does **not** help — the
   corruption is caused by `taskkill` itself, not the later `ClosePseudoConsole`.
 - **Invariant:** on win32 the teardown is node-pty's own coordinated `kill()` —
