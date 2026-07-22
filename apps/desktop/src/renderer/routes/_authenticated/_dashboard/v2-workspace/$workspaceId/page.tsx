@@ -8,6 +8,7 @@ import { useV2UserPreferences } from "renderer/hooks/useV2UserPreferences";
 import { useHotkey } from "renderer/hotkeys";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { RightSidebarToggle } from "renderer/routes/_authenticated/_dashboard/components/TopBar/components/RightSidebarToggle";
+import { V2WorkspaceOpenInButton } from "renderer/routes/_authenticated/_dashboard/components/TopBar/components/V2WorkspaceOpenInButton";
 import { WindowControls } from "renderer/routes/_authenticated/_dashboard/components/TopBar/components/WindowControls";
 import { CommandPalette } from "renderer/screens/main/components/CommandPalette";
 import { ResizablePanel } from "renderer/screens/main/components/ResizablePanel";
@@ -328,6 +329,7 @@ function V2WorkspaceContent() {
 										store={store}
 									/>
 									{workspaceRunButton}
+									<V2WorkspaceOpenInButton workspaceId={workspaceId} />
 									<RightSidebarToggle />
 									{!isMac && <WindowControls />}
 								</div>
