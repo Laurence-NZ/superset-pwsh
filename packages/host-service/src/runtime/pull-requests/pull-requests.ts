@@ -53,6 +53,46 @@ const PROJECT_REFRESH_INTERVAL_MS = 5 * 60_000;
 // PROJECT_REFRESH). Otherwise the cache is always stale at poll time and
 // each tick fires fresh GitHub calls for the same upstream branch.
 const REPO_PULL_REQUEST_CACHE_TTL_MS = 60_000;
+let activeOpenPullRequestSweeps = 0;
+
+function memoryUsageMb() {
+	const usage = process.memoryUsage();
+	return {
+		rss: Math.round(usage.rss / 1024 / 1024),
+		heapUsed: Math.round(usage.heapUsed / 1024 / 1024),
+		external: Math.round(usage.external / 1024 / 1024),
+		arrayBuffers: Math.round(usage.arrayBuffers / 1024 / 1024),
+	};
+}
+
+function capturedOutputBytes(value: unknown): number | undefined {
+	if (typeof value === "string") return Buffer.byteLength(value);
+	if (Buffer.isBuffer(value)) return value.byteLength;
+	return undefined;
+}
+
+function summarizeGhError(error: unknown) {
+	if (!(error instanceof Error)) return { message: String(error) };
+
+	const details = error as Error & {
+		code?: unknown;
+		cmd?: unknown;
+		killed?: unknown;
+		signal?: unknown;
+		stdout?: unknown;
+		stderr?: unknown;
+	};
+	return {
+		name: error.name,
+		message: error.message,
+		code: details.code,
+		cmd: details.cmd,
+		killed: details.killed,
+		signal: details.signal,
+		stdoutBytes: capturedOutputBytes(details.stdout),
+		stderrBytes: capturedOutputBytes(details.stderr),
+	};
+}
 const UNBORN_HEAD_ERROR_PATTERNS = [
 	"ambiguous argument 'head'",
 	"unknown revision or path not in the working tree",
@@ -988,21 +1028,57 @@ export class PullRequestRuntimeManager {
 			cacheKey,
 			options,
 			async () => {
+				const sweepId = randomUUID();
+				const startedAt = performance.now();
+				activeOpenPullRequestSweeps += 1;
+				console.info("[host-service:pr-sweep] started", {
+					sweepId,
+					repository: `${repo.owner}/${repo.name}`,
+					activeSweeps: activeOpenPullRequestSweeps,
+					memoryMb: memoryUsageMb(),
+				});
 				try {
-					return await fetchOpenPullRequestsFromGh(this.execGh, {
+					const pullRequests = await fetchOpenPullRequestsFromGh(this.execGh, {
 						owner: repo.owner,
 						name: repo.name,
 					});
+					console.info("[host-service:pr-sweep] gh completed", {
+						sweepId,
+						repository: `${repo.owner}/${repo.name}`,
+						pullRequestCount: pullRequests.length,
+						durationMs: Math.round(performance.now() - startedAt),
+						activeSweeps: activeOpenPullRequestSweeps,
+						memoryMb: memoryUsageMb(),
+					});
+					return pullRequests;
 				} catch (ghError) {
 					console.warn(
 						"[host-service:pull-request-runtime] gh open-PR sweep failed; falling back to Octokit",
-						{ owner: repo.owner, name: repo.name, error: ghError },
+						{
+							sweepId,
+							repository: `${repo.owner}/${repo.name}`,
+							durationMs: Math.round(performance.now() - startedAt),
+							activeSweeps: activeOpenPullRequestSweeps,
+							memoryMb: memoryUsageMb(),
+							error: summarizeGhError(ghError),
+						},
 					);
 					const octokit = await this.github();
-					return fetchOpenPullRequests(octokit, {
+					const pullRequests = await fetchOpenPullRequests(octokit, {
 						owner: repo.owner,
 						name: repo.name,
 					});
+					console.info("[host-service:pr-sweep] octokit completed", {
+						sweepId,
+						repository: `${repo.owner}/${repo.name}`,
+						pullRequestCount: pullRequests.length,
+						durationMs: Math.round(performance.now() - startedAt),
+						activeSweeps: activeOpenPullRequestSweeps,
+						memoryMb: memoryUsageMb(),
+					});
+					return pullRequests;
+				} finally {
+					activeOpenPullRequestSweeps -= 1;
 				}
 			},
 		);

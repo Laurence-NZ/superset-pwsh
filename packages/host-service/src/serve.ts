@@ -9,7 +9,7 @@ import {
 import { LocalGitCredentialProvider } from "./providers/git";
 import { PskHostAuthProvider } from "./providers/host-auth";
 import { LocalModelProvider } from "./providers/model-providers";
-import { installProcessSafetyNet } from "./safety";
+import { installProcessSafetyNet, startProcessDiagnostics } from "./safety";
 import { startTerminalBaseEnvResolution } from "./terminal/env";
 import { startTerminalReaper } from "./terminal/reaper";
 import { connectRelay } from "./tunnel";
@@ -97,6 +97,7 @@ async function main(): Promise<void> {
 		// Install only after the server is listening so startup throws still
 		// reach `main().catch(...)` and exit with a non-zero code.
 		installProcessSafetyNet();
+		startProcessDiagnostics();
 		console.log(`[host-service] listening on http://localhost:${info.port}`);
 
 		startTerminalReaper(db);

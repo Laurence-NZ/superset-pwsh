@@ -487,18 +487,41 @@ describe("PullRequestRuntimeManager refresh", () => {
 			upstreamBranch: "roshvan/fix-thing",
 			pullRequestId: "pr-existing",
 		});
+		const capturedStdout = "sensitive pull request payload";
 		const manager = createManager(db, {
 			execGh: async (args) => {
 				if (args.includes("head=base-owner:roshvan/fix-thing")) return [];
-				throw new Error("sweep unavailable");
+				const error = new Error("stdout maxBuffer length exceeded") as Error & {
+					code: string;
+					stdout: string;
+				};
+				error.code = "ERR_CHILD_PROCESS_STDIO_MAXBUFFER";
+				error.stdout = capturedStdout;
+				throw error;
 			},
 		});
 
-		await withSilencedWarnings(() =>
-			manager.refreshPullRequestsByWorkspaces(["ws"]),
-		);
+		const warnings: unknown[][] = [];
+		const originalWarn = console.warn;
+		console.warn = (...args) => warnings.push(args);
+		try {
+			await manager.refreshPullRequestsByWorkspaces(["ws"]);
+		} finally {
+			console.warn = originalWarn;
+		}
 
 		expect(getWorkspace(db, "ws")?.pullRequestId).toBe("pr-existing");
+		const sweepWarning = warnings.find((warning) =>
+			String(warning[0]).includes("open-PR sweep failed"),
+		);
+		expect(sweepWarning).toBeDefined();
+		expect(JSON.stringify(sweepWarning)).not.toContain(capturedStdout);
+		expect(sweepWarning?.[1]).toMatchObject({
+			error: {
+				code: "ERR_CHILD_PROCESS_STDIO_MAXBUFFER",
+				stdoutBytes: Buffer.byteLength(capturedStdout),
+			},
+		});
 	});
 });
 

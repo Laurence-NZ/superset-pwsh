@@ -13,6 +13,7 @@ import {
 	LocalGitCredentialProvider,
 	LocalModelProvider,
 	PskHostAuthProvider,
+	startProcessDiagnostics,
 	startTerminalReaper,
 } from "@superset/host-service";
 import {
@@ -114,6 +115,7 @@ async function main(): Promise<void> {
 			// Install only after the server is listening so startup throws still
 			// reach `main().catch(...)` and exit with a non-zero code.
 			installProcessSafetyNet();
+			startProcessDiagnostics();
 
 			// Orphan reaping + port detection for terminals no renderer has attached.
 			startTerminalReaper(db);
