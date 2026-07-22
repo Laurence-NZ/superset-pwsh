@@ -758,7 +758,13 @@ notify the user and switch to theirs.
   reorganized the sidebar chrome and now gates the *diff-stats* display on
   `isActive`. Kept the ↓N behind badge un-gated (its whole purpose is surfacing
   pull-needed workspaces at a glance across rows) and applied upstream's
-  `isActive` gate to the diff-stats portion only.)
+  `isActive` gate to the diff-stats portion only.);
+  `7a6953977` (2026-07-23 merge: upstream #5887 replaced the row's activity
+  strip with port/agent chips and rewrote the action cluster to appear on
+  `group-focus-within` as well as `group-hover`. The badge cluster only hid on
+  `group-hover`, so on the active/focused row the ↓N badge and the row actions
+  overlapped in the shared grid cell — added `group-focus-within:hidden` to the
+  badge cluster so it hides exactly when the actions appear.)
 - **Override policy:** **OVERRIDABLE — and flagged DELETE ON MERGE.** Upstream
   `getBranchSyncStatus.pullCount` already exists; prefer wiring the sidebar to
   that (plus a fetch) over keeping this. If upstream ships a real ahead/behind
