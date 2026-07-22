@@ -717,6 +717,28 @@ For **each** patch entry:
   would instead be a spawn failure (`ESPAWN`/DLL-not-found) if the conpty assets
   aren't unpacked.
 
+## W28 — Port scanner avoids retired `wmic`
+
+- **Commits:** `e2d521b36`
+- **Override policy:** **LOCKED.** Modern Windows installations no longer ship
+  `wmic`; retain the native PowerShell implementation unless upstream replaces
+  the scanner with an equivalent non-`wmic` Windows process-table source.
+- **Invariant:** On win32, terminal port discovery reads the process table once
+  through PowerShell's `Get-CimInstance Win32_Process`, and obtains process
+  names through `Get-Process`. It must not route either operation through
+  `pidtree`'s `wmic` backend or invoke `wmic` directly.
+- **Where:** `packages/port-scanner/src/scanner.ts` (`getProcessTable`,
+  `getProcessNameWindows`).
+- **Scan for:** `wmic` or a win32 `pidtree(-1, ...)` call in
+  `packages/port-scanner`; upstream changes to process-tree or process-name
+  discovery that bypass the PowerShell branch.
+- **Verify (Windows):** `bun test` from `packages/port-scanner`; start
+  `bun run dev:desktop`, open a V2 terminal or preset, and confirm repeated
+  `[PortManager] Scan error: spawn wmic ENOENT` entries do not appear.
+- **Symptom if broken:** opening a V2 terminal or preset repeatedly logs
+  `[PortManager] Scan error: spawn wmic ENOENT`, and terminal-owned listening
+  ports are not discovered.
+
 ---
 
 # §2 — Features & fixes
