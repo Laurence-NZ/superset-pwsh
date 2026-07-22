@@ -273,7 +273,7 @@ export const DashboardSidebarExpandedWorkspaceRow = forwardRef<
 									(isActive &&
 										diffStats &&
 										(diffStats.additions > 0 || diffStats.deletions > 0))) && (
-									<div className="flex items-center gap-1.5 group-hover:hidden">
+									<div className="flex items-center gap-1.5 group-hover:hidden group-focus-within:hidden">
 										{/* STOPGAP (Windows port) — DELETE ON MERGE. See useCommitsToPull above. */}
 										{behind > 0 && (
 											<span
