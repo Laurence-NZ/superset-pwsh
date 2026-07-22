@@ -402,7 +402,7 @@ For **each** patch entry:
   command line + parent chain during app open. The chain was
   `cmd.exe /c watchman … → host-service.js`, and `@parcel/watcher`'s
   `WatchmanBackend.cc` was the only dep matching
-  `--output-encoding=bser get-sockname`. 
+  `--output-encoding=bser get-sockname`.
 
 ## W16 — Sweep stale `active` terminal sessions on win32 startup
 
