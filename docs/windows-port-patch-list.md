@@ -946,3 +946,19 @@ notify the user and switch to theirs.
   or any tab-bar refactor that makes the empty filler non-draggable.
 - **Symptom if broken:** the window moves with no tabs open, but stops moving
   from the same empty tab-bar area as soon as a tab opens.
+
+## F12 — Prevent background-terminal flash on v2 workspace switch
+
+- **Commits:** `320617033`.
+- **Override policy:** **OVERRIDABLE.** If upstream initializes the volatile v2
+  pane store from the selected workspace's cached local state, or otherwise
+  prevents attached terminals being briefly classified as background sessions,
+  adopt its fix and remove this patch.
+- **Invariant:** A v2 workspace's pane store starts with the cached persisted
+  layout for that workspace. It must not start empty and wait for a live-query
+  effect when the matching cache row is already available.
+- **Where:** `apps/desktop/src/renderer/routes/_authenticated/_dashboard/v2-workspace/$workspaceId/hooks/useV2WorkspacePaneLayout/useV2WorkspacePaneLayout.ts`.
+- **Scan for:** upstream changes to v2 pane-store creation or layout hydration
+  that seed the store synchronously from the matching workspace row.
+- **Symptom if broken:** switching to a workspace with an attached terminal
+  briefly shows the background-terminal button before its terminal panes render.
