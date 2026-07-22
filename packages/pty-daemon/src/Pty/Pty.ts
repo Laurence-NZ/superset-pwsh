@@ -247,6 +247,7 @@ class NodePtyAdapter implements Pty {
 		null;
 	private exitCallbacks: PtyOnExit[] = [];
 	private disposed = false;
+	private winTornDown = false;
 
 	constructor(term: nodePty.IPty, meta: SessionMeta) {
 		this.term = term;
@@ -283,6 +284,14 @@ class NodePtyAdapter implements Pty {
 	dispose(_options?: DisposeOptions): void {
 		if (this.disposed) return;
 		this.disposed = true;
+		// W27: on win32, route teardown through node-pty's own coordinated kill
+		// (see windowsTeardown). It must run exactly once whether the session is
+		// closed explicitly (kill() then dispose()) or exits on its own (onExit →
+		// dispose()); the guard makes it idempotent.
+		if (process.platform === "win32") {
+			this.windowsTeardown();
+			return;
+		}
 		// Keep TreeKiller's escalation chain intact. A root shell can exit while
 		// a detached descendant that ignored SIGHUP is still alive; the kill
 		// chain's later snapshots are what find and reap those survivors.
@@ -292,6 +301,42 @@ class NodePtyAdapter implements Pty {
 			(this.term as unknown as { destroy(): void }).destroy();
 		} catch {
 			// node-pty may already have torn the socket down on its exit path.
+		}
+	}
+
+	/**
+	 * W27: single coordinated ConPTY teardown for win32.
+	 *
+	 * We must NOT force-kill the shell tree with `taskkill /T /F` and then let
+	 * node-pty clean up: killing an actively-outputting ConPTY session out from
+	 * under node-pty corrupts the daemon heap (the daemon exits 0xC0000374,
+	 * STATUS_HEAP_CORRUPTION), which drops every terminal the daemon owns — a
+	 * consistent repro is opening two Claude presets and closing one. ConPTY
+	 * requires the conout socket to keep draining while the pseudoconsole is
+	 * closed (see node-pty's windowsConoutConnection), so the teardown has to be
+	 * the library's own: node-pty's kill() stops reading, closes the
+	 * pseudoconsole, and drains + terminates the conout worker in the right order.
+	 * With `useConptyDll` (set at spawn) that path is also fork-free — no
+	 * AttachConsole console-process enumeration, which is the ~5s stall that
+	 * originally pushed this code onto taskkill. WindowsTerminal.kill() throws if
+	 * handed a signal, so it's called with none; taskkill is only a last-resort
+	 * fallback if node-pty's kill throws outright.
+	 */
+	private windowsTeardown(): void {
+		if (this.winTornDown) return;
+		this.winTornDown = true;
+		try {
+			this.term.kill();
+		} catch {
+			try {
+				childProcess.spawnSync(
+					"taskkill.exe",
+					["/PID", String(this.pid), "/T", "/F"],
+					{ stdio: "ignore", timeout: KILL_ESCALATION_TIMEOUT_MS },
+				);
+			} catch {
+				// best-effort last resort; the process may already be gone.
+			}
 		}
 	}
 
@@ -332,14 +377,10 @@ class NodePtyAdapter implements Pty {
 		if (this.exited) return;
 		const killSignal = signal ?? "SIGHUP";
 		if (process.platform === "win32") {
-			const result = childProcess.spawnSync(
-				"taskkill.exe",
-				["/PID", String(this.pid), "/T", "/F"],
-				{ stdio: "ignore", timeout: KILL_ESCALATION_TIMEOUT_MS },
-			);
-			if ((result.error || result.status !== 0) && isPidAlive(this.pid)) {
-				this.term.kill();
-			}
+			// W27: node-pty owns the ConPTY teardown (see windowsTeardown). Do NOT
+			// taskkill the tree first — that corrupts the daemon heap on an
+			// actively-outputting session.
+			this.windowsTeardown();
 			return;
 		}
 		this.killer.kill(killSignal);
@@ -428,7 +469,15 @@ export function spawn({ meta }: SpawnOptions): Pty {
 			env: meta.env,
 			// node-pty's encoding defaults to utf8; we want raw bytes for fidelity.
 			encoding: null,
-		});
+			// W27 (win32): use node-pty's bundled modern ConPTY (conpty.dll) instead
+			// of the inbox Windows one. Its close path is fork-free (no AttachConsole
+			// console-process enumeration — the 5s stall the old inbox path had) and
+			// it fixes the ClosePseudoConsole-while-writing heap corruption that
+			// crashed the daemon (exit 0xC0000374) when an actively-outputting
+			// session was killed. Ignored on POSIX (UnixTerminal). Requires the
+			// prebuilds/<plat>/conpty/ assets to ship next to the bundle.
+			...(process.platform === "win32" ? { useConptyDll: true } : {}),
+		} as nodePty.IWindowsPtyForkOptions);
 	} catch (err) {
 		// node-pty's native "posix_spawnp failed." drops the errno, so re-probe
 		// the same shell+cwd with spawnSync to surface the real code (e.g.

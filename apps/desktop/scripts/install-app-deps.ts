@@ -1,4 +1,7 @@
 import { spawnSync } from "node:child_process";
+import { copyFileSync, existsSync, mkdirSync } from "node:fs";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
 import {
 	checkWindowsNativeBuildPrerequisites,
 	formatWindowsNativeBuildPrereqError,
@@ -27,6 +30,64 @@ if (!prereqCheck.ok) {
 const childEnv = { ...process.env };
 delete childEnv.NoDefaultCurrentDirectoryInExePath;
 
+/**
+ * electron-builder rebuilds node-pty from source for Electron. The rebuilt
+ * conpty.node lives in build/Release, while node-pty resolves its optional
+ * modern ConPTY DLL relative to that binary. The package only ships those
+ * runtime assets in prebuilds, so mirror them after the rebuild.
+ */
+function installNodePtyConptyAssets(): void {
+	if (process.platform !== "win32") return;
+
+	const requireFromDesktop = createRequire(
+		join(import.meta.dirname, "..", "package.json"),
+	);
+	const requireFromPtyDaemon = createRequire(
+		join(
+			import.meta.dirname,
+			"..",
+			"..",
+			"..",
+			"packages",
+			"pty-daemon",
+			"package.json",
+		),
+	);
+	const nodePtyDirs = new Set(
+		[requireFromDesktop, requireFromPtyDaemon].map((requireFrom) =>
+			dirname(requireFrom.resolve("node-pty/package.json")),
+		),
+	);
+	const assets = ["conpty.dll", "OpenConsole.exe"];
+
+	for (const nodePtyDir of nodePtyDirs) {
+		const sourceDir = join(
+			nodePtyDir,
+			"prebuilds",
+			`${process.platform}-${process.arch}`,
+			"conpty",
+		);
+		const targetDir = join(nodePtyDir, "build", "Release", "conpty");
+
+		for (const asset of assets) {
+			const source = join(sourceDir, asset);
+			if (!existsSync(source)) {
+				throw new Error(
+					`node-pty ${asset} is missing from its prebuild assets: ${source}`,
+				);
+			}
+		}
+
+		mkdirSync(targetDir, { recursive: true });
+		for (const asset of assets) {
+			copyFileSync(join(sourceDir, asset), join(targetDir, asset));
+		}
+		console.log(
+			`[install:deps] Installed node-pty modern ConPTY assets in ${targetDir}`,
+		);
+	}
+}
+
 const result = spawnSync("bun", ["x", "electron-builder", "install-app-deps"], {
 	encoding: "utf8",
 	shell: false,
@@ -45,6 +106,14 @@ if (result.error) {
 }
 
 if (result.status === 0) {
+	try {
+		installNodePtyConptyAssets();
+	} catch (error) {
+		console.error(
+			`[install:deps] Failed to install node-pty ConPTY assets: ${(error as Error).message}`,
+		);
+		process.exit(1);
+	}
 	process.exit(0);
 }
 

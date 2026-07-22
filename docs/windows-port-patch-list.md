@@ -646,6 +646,68 @@ For **each** patch entry:
 - **Symptom if broken:** a Windows daemon auto-update either fails to compile
   (missing helper) or silently kills the user's live terminals on update.
 
+## W27 — win32 ConPTY teardown owned by node-pty (modern conpty.dll, no taskkill-first)
+
+- **Commits:** `9bfae2258` (first, ineffective — skipped `destroy()`; superseded),
+  `71a1e23f6` (2026-07-22, teardown fix), `d1e89a280` (2026-07-22,
+  restores the node-pty modern-ConPTY assets after Electron's source rebuild)
+- **Override policy:** **LOCKED** (Windows ConPTY teardown ordering). node-pty
+  1.2 is ConPTY-only — there is no winpty backend to fall back to.
+- **Why:** the daemon closes a session by calling `Pty.kill()` then
+  `Pty.dispose()`. The original win32 path force-killed the whole process tree
+  with `taskkill /T /F` and let node-pty clean up afterward. But ConPTY requires
+  its conout socket to keep draining *while* the pseudoconsole is closed (see
+  node-pty `windowsConoutConnection`: "ClosePseudoConsole ... when data is being
+  written to the terminal when the pty is closed"). Force-killing an
+  **actively-outputting** session out from under node-pty (a Claude preset
+  streams TUI output — hence the consistent repro) corrupts the daemon heap →
+  the daemon exits **`0xC0000374` (STATUS_HEAP_CORRUPTION)**. One daemon owns
+  every PTY in the org, so its crash drops all terminals; the respawned empty
+  daemon makes W12 tombstone every pane "Previous session (ended)". Pre-existing
+  since the 2026-07-21 node-pty `1.1.0 → 1.2.0-beta.14` bump; **not** a merge
+  regression (confirmed reproducing on the pre-merge build). The first attempt —
+  skipping `term.destroy()` on win32 (`9bfae2258`) — did **not** help: the
+  corruption is caused by `taskkill` itself, not the later `ClosePseudoConsole`.
+- **Invariant:** on win32 the teardown is node-pty's own coordinated `kill()` —
+  never a `taskkill`-first force-kill of an active session. Three load-bearing
+  parts, all required:
+  1. Spawn with `useConptyDll: true` (`Pty.ts` `spawn()`), so node-pty uses its
+     bundled **modern ConPTY** (`conpty.dll` + `OpenConsole.exe`). Its close path
+     is fork-free — no `AttachConsole` console-process enumeration, which is the
+     ~5s stall that originally pushed this code onto `taskkill`.
+  2. Both `Pty.kill()` and `Pty.dispose()` funnel to a single guarded
+     `windowsTeardown()` that calls `this.term.kill()` (WindowsTerminal.kill with
+     **no signal** — it throws if given one). This runs exactly once whether the
+     session is closed explicitly (kill + dispose) or exits on its own (onExit →
+     dispose). `taskkill` remains only as a last-resort fallback if `term.kill()`
+     throws.
+  3. The `conpty.dll`/`OpenConsole.exe` assets must sit **beside the rebuilt
+     `conpty.node`**. node-pty's native loader (`src/win/conpty.cc`) does
+     `GetModuleHandle("conpty.node")` → its dir → `conpty\conpty.dll`; Electron's
+     from-source rebuild emits `build/Release/conpty.node` but never creates
+     `build/Release/conpty/`, so without a copy step spawning aborts with
+     "Cannot find conpty.dll" (terminals fail to start — *not* a crash).
+     `install-app-deps.ts` mirrors both assets from `prebuilds/<plat>/conpty/`
+     into `build/Release/conpty/` after the rebuild.
+- **Where:** `packages/pty-daemon/src/Pty/Pty.ts` — `spawn()` (`useConptyDll`
+  option), `NodePtyAdapter.windowsTeardown()`, and the win32 branches of `kill()`
+  and `dispose()`; `apps/desktop/scripts/install-app-deps.ts` mirrors
+  `conpty.dll` and `OpenConsole.exe` from node-pty's `prebuilds/<plat>/conpty/`
+  into `build/Release/conpty/` after Electron rebuilds its native addon. Dev
+  (`bun run dev:desktop`) then resolves the assets beside the rebuilt addon; a
+  **packaged** build must still `asarUnpack` node-pty's assets.
+- **Scan for:** any win32 path that force-kills a pty (`taskkill`, `process.kill`)
+  *before* node-pty's coordinated `kill()`; a spawn that drops `useConptyDll` on
+  win32; a node-pty bump that changes the Windows kill semantics or moves the
+  bundled conpty.dll (re-verify the DLL still resolves, the Electron rebuild
+  mirrors `conpty.dll` + `OpenConsole.exe` beside `conpty.node`, and the teardown
+  still runs once).
+- **Symptom if broken:** killing/closing one terminal crashes the pty-daemon
+  (`exit code 3221226356` in host-service logs), and every other terminal in the
+  workspace flips to "Previous session (ended)". A packaged-build regression
+  would instead be a spawn failure (`ESPAWN`/DLL-not-found) if the conpty assets
+  aren't unpacked.
+
 ---
 
 # §2 — Features & fixes
