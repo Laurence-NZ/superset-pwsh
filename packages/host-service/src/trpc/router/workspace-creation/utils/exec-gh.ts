@@ -3,9 +3,11 @@ import { promisify } from "node:util";
 import { getStrictShellEnvironment } from "../../../../terminal/clean-shell-env";
 
 const execFileAsync = promisify(execFile);
+const DEFAULT_MAX_BUFFER_BYTES = 1024 * 1024;
 
 export interface ExecGhOptions {
 	cwd?: string;
+	maxBuffer?: number;
 	timeout?: number;
 }
 
@@ -26,6 +28,7 @@ export const execGh: ExecGh = async (args, options) => {
 	);
 	const { stdout } = await execFileAsync("gh", args, {
 		encoding: "utf8",
+		maxBuffer: options?.maxBuffer ?? DEFAULT_MAX_BUFFER_BYTES,
 		timeout: options?.timeout ?? 10_000,
 		cwd: options?.cwd,
 		env,

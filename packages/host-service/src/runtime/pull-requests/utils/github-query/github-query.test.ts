@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { ExecGhOptions } from "../../../../trpc/router/workspace-creation/utils/exec-gh";
 import {
 	fetchOpenPullRequestsFromGh,
 	fetchPullRequestByHeadFromGh,
@@ -9,12 +10,13 @@ import {
 
 interface GhCall {
 	args: string[];
+	options?: ExecGhOptions;
 }
 
 function createExecGh(responses: unknown[]) {
 	const calls: GhCall[] = [];
-	const execGh = async (args: string[]) => {
-		calls.push({ args });
+	const execGh = async (args: string[], options?: ExecGhOptions) => {
+		calls.push(options ? { args, options } : { args });
 		const response = responses.shift();
 		if (response instanceof Error) throw response;
 		return response;
@@ -306,6 +308,7 @@ describe("GitHub pull request REST queries", () => {
 					"-f",
 					"per_page=100",
 				],
+				options: { maxBuffer: 16 * 1024 * 1024 },
 			},
 		]);
 	});

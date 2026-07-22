@@ -9,6 +9,9 @@ import type {
 
 type PullRequestState = GitHubPullRequestNode["state"];
 
+// A page of 100 full REST PR objects can exceed Node's 1 MiB execFile default.
+const OPEN_PULL_REQUESTS_MAX_BUFFER_BYTES = 16 * 1024 * 1024;
+
 // Don't link a branch to a closed/merged PR that hasn't been touched in over a
 // month — those are stale and irrelevant (e.g. an old dummy PR reusing a common
 // branch name like `develop`). Open PRs are always relevant, whatever their age.
@@ -277,20 +280,25 @@ export async function fetchOpenPullRequestsFromGh(
 		name: string;
 	},
 ): Promise<GitHubPullRequestNode[]> {
-	const raw = await execGh([
-		"api",
-		"--method",
-		"GET",
-		`repos/${repository.owner}/${repository.name}/pulls`,
-		"-f",
-		"state=open",
-		"-f",
-		"sort=updated",
-		"-f",
-		"direction=desc",
-		"-f",
-		"per_page=100",
-	]);
+	const raw = await execGh(
+		[
+			"api",
+			"--method",
+			"GET",
+			`repos/${repository.owner}/${repository.name}/pulls`,
+			"-f",
+			"state=open",
+			"-f",
+			"sort=updated",
+			"-f",
+			"direction=desc",
+			"-f",
+			"per_page=100",
+		],
+		{
+			maxBuffer: OPEN_PULL_REQUESTS_MAX_BUFFER_BYTES,
+		},
+	);
 
 	return asArray(raw)
 		.map((item) => normalizePullRequest(item))
