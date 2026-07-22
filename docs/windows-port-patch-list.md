@@ -897,3 +897,16 @@ notify the user and switch to theirs.
   `mcp_servers.neon`, `mcp_servers.sentry`, or `mcp_servers.superset` entries
   returning to `.codex/config.toml` without an explicit request to enable the
   integration.
+
+## F9 — Stream-mode desktop development diagnostics
+
+- **Commits:** `64ab90918`
+- **Override policy:** **OVERRIDABLE.** If upstream documents an equivalent
+  cross-platform diagnostic workflow, prefer its guidance.
+- **Invariant:** Automated desktop diagnostics use Turbo stream mode so all task
+  output is visible. After a timed-out run, agents check for and stop its
+  surviving Bun/Turbo process tree before retrying, because Windows children can
+  retain the development ports.
+- **Where:** `AGENTS.md` (Windows port guidance).
+- **Scan for:** removal of the `dev:desktop --ui=stream` command or the
+  post-timeout process-tree cleanup warning.
