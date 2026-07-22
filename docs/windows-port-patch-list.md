@@ -653,7 +653,11 @@ For **each** patch entry:
 - **Commits:** `139afc7f8` (2026-07-22 — the full three-part fix: `useConptyDll`
   spawn, coordinated `windowsTeardown()`, and the post-rebuild conpty-asset copy)
 - **Override policy:** **LOCKED** (Windows ConPTY teardown ordering). node-pty
-  1.2 is ConPTY-only — there is no winpty backend to fall back to.
+  1.2 is ConPTY-only — there is no winpty backend to fall back to. **Removal
+  trigger:** if a later node-pty release fixes the ConPTY-close-while-writing
+  corruption, notify the user — this whole workaround (`useConptyDll` +
+  coordinated `windowsTeardown()` + the post-rebuild conpty-asset copy) can
+  likely be dropped back to a plain teardown.
 - **Why:** the daemon closes a session by calling `Pty.kill()` then
   `Pty.dispose()`. The original win32 path force-killed the whole process tree
   with `taskkill /T /F` and let node-pty clean up afterward. But ConPTY requires
@@ -670,9 +674,7 @@ For **each** patch entry:
   merge regression (confirmed reproducing on the pre-merge build). The bump is an
   **upstream** commit on `origin/main`, so the fix lives here in W27, never in
   `7515dd410` (rewriting an upstream commit would break every future
-  `/merge-upstream`). **Removal trigger:** if a later node-pty release fixes the
-  ConPTY-close-while-writing corruption, this whole workaround (useConptyDll +
-  coordinated teardown + asset copy) can likely be dropped. **Dead-end (do not
+  `/merge-upstream`). **Dead-end (do not
   retry):** merely skipping `term.destroy()` on win32 does **not** help — the
   corruption is caused by `taskkill` itself, not the later `ClosePseudoConsole`.
 - **Invariant:** on win32 the teardown is node-pty's own coordinated `kill()` —
