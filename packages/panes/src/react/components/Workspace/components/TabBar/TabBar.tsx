@@ -206,11 +206,11 @@ export function TabBar<TData>({
 			>
 				<div
 					ref={tabsTrackRef}
-					className="no-drag relative flex h-full flex-1 items-stretch"
+					className="relative flex h-full flex-1 items-stretch"
 				>
 					{tabs.map((tab, i) => (
 						<div
-							className="h-full shrink-0"
+							className="no-drag h-full shrink-0"
 							key={tab.id}
 							style={{ width: TAB_WIDTH }}
 						>
@@ -237,7 +237,7 @@ export function TabBar<TData>({
 						/>
 					)}
 					{!hasHorizontalOverflow && (
-						<div className="flex h-full w-10 shrink-0 items-center justify-center border-b border-border">
+						<div className="no-drag flex h-full w-10 shrink-0 items-center justify-center border-b border-border">
 							<AddTabButton renderAddTabMenu={renderAddTabMenu} />
 						</div>
 					)}
