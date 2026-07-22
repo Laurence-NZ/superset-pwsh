@@ -930,3 +930,19 @@ notify the user and switch to theirs.
   sweep request that make the scoped override redundant.
 - **Symptom if broken:** large repositories log
   `ERR_CHILD_PROCESS_STDIO_MAXBUFFER` and fall back to Octokit during startup.
+
+## F11 — Keep populated v2 tab-bar filler draggable
+
+- **Commits:** `5589dcb8b`.
+- **Override policy:** **OVERRIDABLE.** Upstream introduced the regression in
+  `616bb6796` (#5824). If upstream makes the populated tab bar's empty area
+  draggable, adopt its fix and remove this patch.
+- **Invariant:** When v2 merges the title bar into the pane tab bar, only actual
+  tabs and interactive controls are `no-drag`. The flex filler to the right of
+  populated tabs remains part of the Electron `drag` region. The zero-tab and
+  populated-tab states must both allow moving the window.
+- **Where:** `packages/panes/src/react/components/Workspace/components/TabBar/TabBar.tsx`.
+- **Scan for:** `no-drag` on a populated tab track that expands with `flex-1`,
+  or any tab-bar refactor that makes the empty filler non-draggable.
+- **Symptom if broken:** the window moves with no tabs open, but stops moving
+  from the same empty tab-bar area as soon as a tab opens.
