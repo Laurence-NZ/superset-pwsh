@@ -719,25 +719,30 @@ For **each** patch entry:
 
 ## W28 — Port scanner avoids retired `wmic`
 
-- **Commits:** `e2d521b36`
+- **Commits:** `e2d521b36`; `d1f5b5af0` (rejects PID 0 reported during
+  node-pty's asynchronous Windows ConPTY startup, preventing the process-tree
+  walk from attributing System PID 4 listeners to a terminal).
 - **Override policy:** **LOCKED.** Modern Windows installations no longer ship
   `wmic`; retain the native PowerShell implementation unless upstream replaces
   the scanner with an equivalent non-`wmic` Windows process-table source.
 - **Invariant:** On win32, terminal port discovery reads the process table once
   through PowerShell's `Get-CimInstance Win32_Process`, and obtains process
   names through `Get-Process`. It must not route either operation through
-  `pidtree`'s `wmic` backend or invoke `wmic` directly.
+  `pidtree`'s `wmic` backend or invoke `wmic` directly. Process-tree roots must
+  be positive integers; PID 0 must never expand into Windows system processes.
 - **Where:** `packages/port-scanner/src/scanner.ts` (`getProcessTable`,
-  `getProcessNameWindows`).
+  `getProcessTreesForPids`, `getProcessNameWindows`).
 - **Scan for:** `wmic` or a win32 `pidtree(-1, ...)` call in
   `packages/port-scanner`; upstream changes to process-tree or process-name
-  discovery that bypass the PowerShell branch.
+  discovery that bypass the PowerShell branch; removal of the positive-integer
+  root filter.
 - **Verify (Windows):** `bun test` from `packages/port-scanner`; start
-  `bun run dev:desktop`, open a V2 terminal or preset, and confirm repeated
-  `[PortManager] Scan error: spawn wmic ENOENT` entries do not appear.
+  `bun run dev:desktop`, open a V2 terminal or preset, and confirm neither
+  `[PortManager] Scan error: spawn wmic ENOENT` nor System PID 4 ports 139/445
+  appear.
 - **Symptom if broken:** opening a V2 terminal or preset repeatedly logs
-  `[PortManager] Scan error: spawn wmic ENOENT`, and terminal-owned listening
-  ports are not discovered.
+  `[PortManager] Scan error: spawn wmic ENOENT`, or its workspace activity strip
+  shows Windows file-sharing ports 139/445 owned by System PID 4.
 
 ---
 
