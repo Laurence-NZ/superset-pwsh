@@ -787,3 +787,20 @@ notify the user and switch to theirs.
   `auto-updater.ts`) — re-apply the forced `true` at the effective chokepoint; a
   merge that drops the `checked`/`disabled` props from the `disable-auto-update`
   switch — re-pin them.
+
+## F8 — Keep optional MCP integrations disabled in this workspace
+
+- **Commits:** `e763ca35a`
+- **Override policy:** **LOCKED for this fork.** These integrations are not
+  required to develop or run the Windows v2 desktop fork, and an unavailable
+  local Maestro executable or unsigned-in remote service makes every Codex
+  startup noisy.
+- **What:** removes the active Maestro, Linear, Neon, Sentry, and Superset MCP
+  server definitions from the workspace Codex configuration. Expo remains
+  explicitly disabled. This prevents client startup warnings without changing
+  application runtime behaviour.
+- **Where:** `.codex/config.toml`.
+- **Scan for:** active `mcp_servers.maestro`, `mcp_servers.linear`,
+  `mcp_servers.neon`, `mcp_servers.sentry`, or `mcp_servers.superset` entries
+  returning to `.codex/config.toml` without an explicit request to enable the
+  integration.
