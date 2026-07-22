@@ -56,11 +56,53 @@ export interface PortInfo {
 	processName: string;
 }
 
+interface ProcessTableEntry {
+	pid: number;
+	ppid: number;
+}
+
+const WINDOWS_PROCESS_TABLE_COMMAND =
+	'Get-CimInstance -ClassName Win32_Process -Property ProcessId,ParentProcessId | ForEach-Object { "$($_.ProcessId),$($_.ParentProcessId)" }';
+
+async function getProcessTable(): Promise<ProcessTableEntry[]> {
+	if (os.platform() !== "win32") {
+		return pidtree(-1, { advanced: true });
+	}
+
+	const { stdout } = await execFileAsync(
+		"powershell",
+		[
+			"-NoProfile",
+			"-NonInteractive",
+			"-Command",
+			WINDOWS_PROCESS_TABLE_COMMAND,
+		],
+		{
+			maxBuffer: 10 * 1024 * 1024,
+			timeout: EXEC_TIMEOUT_MS,
+			windowsHide: true,
+		},
+	);
+
+	const table: ProcessTableEntry[] = [];
+	for (const line of stdout.split("\n")) {
+		const match = line.trim().match(/^(\d+),(\d+)$/);
+		if (!match) continue;
+
+		const pid = Number(match[1]);
+		const ppid = Number(match[2]);
+		if (!Number.isSafeInteger(pid) || !Number.isSafeInteger(ppid)) continue;
+
+		table.push({ pid, ppid });
+	}
+
+	return table;
+}
+
 /**
  * Get the process tree (root + descendants) for each of the given root PIDs
- * using a single system-wide process-table read. pidtree spawns a full
- * `ps`/`wmic` per invocation, so calling it once per session made scan cost
- * scale linearly with session count.
+ * using a single system-wide process-table read. On Windows this avoids
+ * pidtree's deprecated `wmic` dependency, which is absent on modern Windows.
  *
  * Roots that are no longer running are absent from the returned map. Throws
  * when the process table itself can't be read, so callers can keep previous
@@ -72,7 +114,7 @@ export async function getProcessTreesForPids(
 	const trees = new Map<number, number[]>();
 	if (rootPids.length === 0) return trees;
 
-	const table = await pidtree(-1, { advanced: true });
+	const table = await getProcessTable();
 
 	const childrenByPpid = new Map<number, number[]>();
 	const alivePids = new Set<number>();
@@ -302,26 +344,17 @@ async function getProcessNameWindows(
 ): Promise<string> {
 	try {
 		const { stdout: output } = await execFileAsync(
-			"wmic",
-			["process", "where", `processid=${pid}`, "get", "name"],
-			{ timeout: EXEC_TIMEOUT_MS, signal },
+			"powershell",
+			[
+				"-NoProfile",
+				"-NonInteractive",
+				"-Command",
+				`(Get-Process -Id ${pid} -ErrorAction Stop).ProcessName`,
+			],
+			{ timeout: EXEC_TIMEOUT_MS, signal, windowsHide: true },
 		);
-		const lines = output.trim().split("\n");
-		const secondLine = lines[1];
-		if (secondLine) {
-			const name = secondLine.trim();
-			return name.replace(/\.exe$/i, "") || "unknown";
-		}
+		return output.trim() || "unknown";
 	} catch {
-		// wmic is deprecated, try PowerShell as fallback
-		try {
-			const { stdout: output } = await execFileAsync(
-				"powershell",
-				["-Command", `(Get-Process -Id ${pid}).ProcessName`],
-				{ timeout: EXEC_TIMEOUT_MS, signal },
-			);
-			return output.trim() || "unknown";
-		} catch {}
+		return "unknown";
 	}
-	return "unknown";
 }
