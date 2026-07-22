@@ -24,19 +24,23 @@ export function useV2WorkspacePaneLayout() {
 	// workspace switches, live queries can briefly return stale rows; sharing
 	// the same store across that boundary lets panes from one worktree render
 	// and persist under another.
-	const workspaceRuntime = useMemo(
-		() => ({
+	const workspaceRuntime = useMemo(() => {
+		const initialPaneLayout =
+			(collections.v2WorkspaceLocalState.get(workspaceId)?.paneLayout as
+				| WorkspaceState<PaneViewerData>
+				| undefined) ?? EMPTY_STATE;
+		return {
 			workspaceId,
+			initialSnapshot: getSnapshot(initialPaneLayout),
 			store: createWorkspaceStore<PaneViewerData>({
-				initialState: EMPTY_STATE,
+				initialState: initialPaneLayout,
 			}),
-		}),
-		[workspaceId],
-	);
+		};
+	}, [collections.v2WorkspaceLocalState, workspaceId]);
 	const { store } = workspaceRuntime;
 	const syncStateRef = useRef({
 		workspaceId,
-		lastSyncedSnapshot: getSnapshot(EMPTY_STATE),
+		lastSyncedSnapshot: workspaceRuntime.initialSnapshot,
 	});
 
 	const { data: localWorkspaceRows = [], isReady: isLayoutReady } =
@@ -64,9 +68,9 @@ export function useV2WorkspacePaneLayout() {
 	useEffect(() => {
 		syncStateRef.current = {
 			workspaceId,
-			lastSyncedSnapshot: getSnapshot(EMPTY_STATE),
+			lastSyncedSnapshot: workspaceRuntime.initialSnapshot,
 		};
-	}, [workspaceId]);
+	}, [workspaceId, workspaceRuntime.initialSnapshot]);
 
 	useEffect(() => {
 		const nextSnapshot = getSnapshot(persistedPaneLayout);
