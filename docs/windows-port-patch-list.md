@@ -648,9 +648,8 @@ For **each** patch entry:
 
 ## W27 — win32 ConPTY teardown owned by node-pty (modern conpty.dll, no taskkill-first)
 
-- **Commits:** `9bfae2258` (first, ineffective — skipped `destroy()`; superseded),
-  `71a1e23f6` (2026-07-22, teardown fix), `d1e89a280` (2026-07-22,
-  restores the node-pty modern-ConPTY assets after Electron's source rebuild)
+- **Commits:** `139afc7f8` (2026-07-22 — the full three-part fix: `useConptyDll`
+  spawn, coordinated `windowsTeardown()`, and the post-rebuild conpty-asset copy)
 - **Override policy:** **LOCKED** (Windows ConPTY teardown ordering). node-pty
   1.2 is ConPTY-only — there is no winpty backend to fall back to.
 - **Why:** the daemon closes a session by calling `Pty.kill()` then
@@ -665,8 +664,8 @@ For **each** patch entry:
   every PTY in the org, so its crash drops all terminals; the respawned empty
   daemon makes W12 tombstone every pane "Previous session (ended)". Pre-existing
   since the 2026-07-21 node-pty `1.1.0 → 1.2.0-beta.14` bump; **not** a merge
-  regression (confirmed reproducing on the pre-merge build). The first attempt —
-  skipping `term.destroy()` on win32 (`9bfae2258`) — did **not** help: the
+  regression (confirmed reproducing on the pre-merge build). **Dead-end (do not
+  retry):** merely skipping `term.destroy()` on win32 does **not** help — the
   corruption is caused by `taskkill` itself, not the later `ClosePseudoConsole`.
 - **Invariant:** on win32 the teardown is node-pty's own coordinated `kill()` —
   never a `taskkill`-first force-kill of an active session. Three load-bearing
@@ -852,7 +851,7 @@ notify the user and switch to theirs.
 
 ## F8 — Keep optional MCP integrations disabled in this workspace
 
-- **Commits:** `e763ca35a`
+- **Commits:** `367cf04eb`
 - **Override policy:** **LOCKED for this fork.** These integrations are not
   required to develop or run the Windows v2 desktop fork, and an unavailable
   local Maestro executable or unsigned-in remote service makes every Codex
