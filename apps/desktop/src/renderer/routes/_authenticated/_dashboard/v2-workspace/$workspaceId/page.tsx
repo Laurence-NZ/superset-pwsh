@@ -329,7 +329,10 @@ function V2WorkspaceContent() {
 										store={store}
 									/>
 									{workspaceRunButton}
-									<V2WorkspaceOpenInButton workspaceId={workspaceId} />
+									<V2WorkspaceOpenInButton
+										workspaceId={workspaceId}
+										alwaysShowBranch
+									/>
 									<RightSidebarToggle />
 									{!isMac && <WindowControls />}
 								</div>

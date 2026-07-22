@@ -24,12 +24,20 @@ interface V2OpenInMenuButtonProps {
 	worktreePath: string;
 	branch: string;
 	projectId: string;
+	/**
+	 * Force the `/branch` label to always render instead of gating it behind the
+	 * `@[240px]` container query. The sidebar copy sits in an `@container` wide
+	 * enough to reveal it, but the pane tab-bar copy has no such ancestor, so it
+	 * opts in here to match. See F14 in docs/windows-port-patch-list.md.
+	 */
+	alwaysShowBranch?: boolean;
 }
 
 export function V2OpenInMenuButton({
 	worktreePath,
 	branch,
 	projectId,
+	alwaysShowBranch = false,
 }: V2OpenInMenuButtonProps) {
 	const activeTheme = useThemeStore((state) => state.activeTheme);
 
@@ -98,8 +106,11 @@ export function V2OpenInMenuButton({
 						className={cn(
 							// Icon-only when the nearest @container is narrow; the branch
 							// label comes back once there's room (right sidebar is resizable,
-							// so viewport breakpoints don't apply here).
-							"group flex h-6 items-center justify-center gap-1.5 rounded-l border border-r-0 border-border/60 bg-secondary/50 px-1.5 text-xs font-medium @[240px]:pr-2",
+							// so viewport breakpoints don't apply here). alwaysShowBranch
+							// opts out of the container gate for placements with no wide
+							// @container ancestor (the pane tab bar).
+							"group flex h-6 items-center justify-center gap-1.5 rounded-l border border-r-0 border-border/60 bg-secondary/50 px-1.5 text-xs font-medium",
+							alwaysShowBranch ? "pr-2" : "@[240px]:pr-2",
 							"transition-all duration-150 ease-out",
 							"hover:bg-secondary hover:border-border",
 							"focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
@@ -116,7 +127,12 @@ export function V2OpenInMenuButton({
 						)}
 						{branch && (
 							<OverflowFadeText
-								className="hidden max-w-[140px] text-muted-foreground tabular-nums @[240px]:inline-block"
+								className={cn(
+									"max-w-[140px] text-muted-foreground tabular-nums",
+									alwaysShowBranch
+										? "inline-block"
+										: "hidden @[240px]:inline-block",
+								)}
 								title={branch}
 							>
 								/{branch}
