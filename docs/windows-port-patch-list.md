@@ -910,3 +910,18 @@ notify the user and switch to theirs.
 - **Where:** `AGENTS.md` (Windows port guidance).
 - **Scan for:** removal of the `dev:desktop --ui=stream` command or the
   post-timeout process-tree cleanup warning.
+
+## F10 — Allow large `gh` open-PR sweep responses
+
+- **Commits:** `a47242045`
+- **Override policy:** **OVERRIDABLE.** Upstream introduced the sweep in
+  `b98580d63` (#5455). If upstream raises the buffer or reduces the REST payload,
+  adopt its fix and remove this patch.
+- **Invariant:** Only the repo-wide 100-PR sweep raises `gh` stdout capacity to
+  16 MiB. Other `gh` calls retain the existing 1 MiB default.
+- **Where:** `exec-gh.ts` (`ExecGhOptions.maxBuffer`); `github-query.ts`
+  (`fetchOpenPullRequestsFromGh`); the co-located query test.
+- **Scan for:** upstream changes to `execGh` buffer handling or the open-PR
+  sweep request that make the scoped override redundant.
+- **Symptom if broken:** large repositories log
+  `ERR_CHILD_PROCESS_STDIO_MAXBUFFER` and fall back to Octokit during startup.
