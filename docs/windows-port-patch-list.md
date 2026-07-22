@@ -916,18 +916,31 @@ notify the user and switch to theirs.
 - **Scan for:** removal of the `dev:desktop --ui=stream` command or the
   post-timeout process-tree cleanup warning.
 
-## F10 — Allow large `gh` open-PR sweep responses
+## F10 — Bound and diagnose large `gh` open-PR sweep responses
 
-- **Commits:** `a47242045`
+- **Commits:** `a47242045`, `d47f255b1`
 - **Override policy:** **OVERRIDABLE.** Upstream introduced the sweep in
   `b98580d63` (#5455). If upstream raises the buffer or reduces the REST payload,
-  adopt its fix and remove this patch.
+  adopt its fix and remove this patch. The diagnostics are temporary: remove
+  them once the intermittent host-service crash is identified or upstream adds
+  equivalent crash telemetry.
 - **Invariant:** Only the repo-wide 100-PR sweep raises `gh` stdout capacity to
-  16 MiB. Other `gh` calls retain the existing 1 MiB default.
+  16 MiB. Other `gh` calls retain the existing 1 MiB default. Sweep diagnostics
+  record concurrency, duration, result count, and process memory under
+  `[host-service:pr-sweep]`; failures record captured output sizes without
+  logging the captured PR payload. A process-wide
+  `[host-service:diagnostics]` heartbeat records memory, CPU, event-loop delay,
+  uptime, and active resource counts once per minute so unrelated native exits
+  retain useful lead-up evidence.
 - **Where:** `exec-gh.ts` (`ExecGhOptions.maxBuffer`); `github-query.ts`
-  (`fetchOpenPullRequestsFromGh`); the co-located query test.
+  (`fetchOpenPullRequestsFromGh`); `pull-requests.ts` (bounded diagnostics); the
+  co-located query and runtime tests; `safety.ts` and both host-service entry
+  points (process heartbeat).
 - **Scan for:** upstream changes to `execGh` buffer handling or the open-PR
-  sweep request that make the scoped override redundant.
+  sweep request that make the scoped override redundant. For a new crash, grep
+  the installed `$SUPERSET_HOME_DIR/host/<org-id>/host-service.log` for
+  `[host-service:diagnostics]` and `[host-service:pr-sweep]`, then correlate the
+  final heartbeats with the coordinator's native exit code.
 - **Symptom if broken:** large repositories log
   `ERR_CHILD_PROCESS_STDIO_MAXBUFFER` and fall back to Octokit during startup.
 
