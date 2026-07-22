@@ -981,3 +981,30 @@ notify the user and switch to theirs.
   that seed the store synchronously from the matching workspace row.
 - **Symptom if broken:** switching to a workspace with an attached terminal
   briefly shows the background-terminal button before its terminal panes render.
+
+## F13 — v2 OPEN_IN_APP hotkey registered at workspace level, not in the button
+
+- **Commits:** `e5d30ad43`
+- **Override policy:** **OVERRIDABLE.** Upstream introduced the coupling in
+  `616bb6796` (#5824) by moving the Open-in button into the sidebar with the
+  hotkey still registered inside it. If upstream decouples the shortcut from the
+  button's mount (e.g. registers it at a workspace/global level), adopt theirs
+  and delete this hook.
+- **Invariant:** The `OPEN_IN_APP` shortcut (⌘/Ctrl+O → open the worktree in the
+  chosen editor) is registered once at the always-mounted workspace level
+  (`useV2OpenInAppHotkey`, called from `V2WorkspaceContent`), **not** inside
+  `V2OpenInMenuButton`. It must keep working when the right sidebar is collapsed
+  (button unmounted) and must not be registered in more than one place at once
+  (a second `useHotkey("OPEN_IN_APP", …)` would double-fire the open mutation).
+  The hook mirrors the button's target gate — local workspace with a provisioned
+  `worktreePath`, resolved default app from `useV2ProjectDefaultApp`.
+- **Where:** `apps/desktop/src/renderer/routes/_authenticated/_dashboard/v2-workspace/$workspaceId/hooks/useV2OpenInAppHotkey/`
+  (the hook); wired in the same route's `page.tsx` (`V2WorkspaceContent`);
+  registration removed from
+  `apps/desktop/src/renderer/routes/_authenticated/_dashboard/components/TopBar/components/V2OpenInMenuButton/V2OpenInMenuButton.tsx`.
+- **Scan for:** a `useHotkey("OPEN_IN_APP", …)` reappearing inside
+  `V2OpenInMenuButton` (or any conditionally-mounted component) — remove it, the
+  workspace-level hook owns the shortcut; upstream adding its own always-mounted
+  OPEN_IN_APP registration (switch to theirs, delete the hook).
+- **Symptom if broken:** ⌘/Ctrl+O does nothing while the right sidebar is
+  collapsed, or opens the editor twice per press (double registration).
