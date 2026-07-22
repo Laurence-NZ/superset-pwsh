@@ -15,7 +15,7 @@ import {
 	getAppOption,
 	OpenInExternalDropdownItems,
 } from "renderer/components/OpenInExternalDropdown";
-import { HotkeyLabel, useHotkey, useHotkeyDisplay } from "renderer/hotkeys";
+import { HotkeyLabel, useHotkeyDisplay } from "renderer/hotkeys";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { useV2ProjectDefaultApp } from "renderer/routes/_authenticated/hooks/useV2ProjectDefaultApp";
 import { useThemeStore } from "renderer/stores";
@@ -78,7 +78,9 @@ export function V2OpenInMenuButton({
 		copyPath.mutate(worktreePath);
 	}, [worktreePath, copyPath, openInApp.isPending]);
 
-	useHotkey("OPEN_IN_APP", handleOpenInEditor);
+	// The OPEN_IN_APP hotkey is registered at the workspace level
+	// (useV2OpenInAppHotkey) so it works even when this button is unmounted with
+	// a collapsed right sidebar — see F13 in docs/windows-port-patch-list.md.
 
 	return (
 		<div className="flex items-center no-drag">

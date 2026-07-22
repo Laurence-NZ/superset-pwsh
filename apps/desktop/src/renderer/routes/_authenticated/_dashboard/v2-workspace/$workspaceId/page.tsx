@@ -33,6 +33,7 @@ import { usePaneRegistry } from "./hooks/usePaneRegistry";
 import { renderBrowserTabIcon } from "./hooks/usePaneRegistry/components/BrowserPane";
 import { useSlotElement } from "./hooks/useSlotElement";
 import { useTabCloseGuard } from "./hooks/useTabCloseGuard";
+import { useV2OpenInAppHotkey } from "./hooks/useV2OpenInAppHotkey";
 import { useV2PresetExecution } from "./hooks/useV2PresetExecution";
 import { useV2TerminalLauncher } from "./hooks/useV2TerminalLauncher";
 import { useV2WorkspacePaneLayout } from "./hooks/useV2WorkspacePaneLayout";
@@ -258,6 +259,9 @@ function V2WorkspaceContent() {
 	useHotkey("RUN_WORKSPACE_COMMAND", () => {
 		void workspaceRun.toggleWorkspaceRun();
 	});
+	// Registered here (always mounted) rather than inside the Open-in button so
+	// the shortcut survives collapsing the right sidebar — see F13.
+	useV2OpenInAppHotkey(workspaceId);
 
 	const { data: platform } = electronTrpc.window.getPlatform.useQuery();
 	// Default to Mac while loading so window controls don't flash in.
