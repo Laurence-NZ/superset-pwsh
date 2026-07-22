@@ -1008,3 +1008,31 @@ notify the user and switch to theirs.
   OPEN_IN_APP registration (switch to theirs, delete the hook).
 - **Symptom if broken:** ⌘/Ctrl+O does nothing while the right sidebar is
   collapsed, or opens the editor twice per press (double registration).
+
+## F14 — v2 Open-in button duplicated into the always-visible pane tab bar
+
+- **Commits:** `babffc785`
+- **Override policy:** **OVERRIDABLE — preference, not a bug.** Upstream `616bb6796`
+  (#5824) deliberately moved the button into the sidebar's PR action header; this
+  fork wants it always reachable from the top chrome. If upstream restores an
+  always-visible top-bar Open-in entry point, drop this duplicate and adopt
+  theirs. Removing this patch is safe — the sidebar button (upstream's) still
+  works on its own.
+- **Invariant:** `V2WorkspaceOpenInButton` renders in the v2 pane tab bar's
+  trailing cluster (`renderTabBarTrailing`, beside the run button and
+  right-sidebar toggle), which is visible in every sidebar state — unlike the
+  `TopBar`, which is hidden on the v2 workspace route whenever the left dashboard
+  sidebar is expanded (`layout.tsx` `hideTopBar`). This is a **second** instance;
+  the upstream sidebar copy in `PRActionHeader` stays. Both share the same
+  `V2WorkspaceOpenInButton` component and per-project default-app state, so they
+  can't drift. The OPEN_IN_APP hotkey is owned separately by [F13] — neither
+  button registers it.
+- **Where:** `apps/desktop/src/renderer/routes/_authenticated/_dashboard/v2-workspace/$workspaceId/page.tsx`
+  (`V2WorkspaceContent`, `renderTabBarTrailing`).
+- **Scan for:** upstream re-adding an always-visible top-bar / tab-bar Open-in
+  button (remove this duplicate, use theirs); a merge that rewrites
+  `renderTabBarTrailing` and drops this instance (re-add it); the button being
+  moved such that only the conditionally-hidden `TopBar` hosts it (would
+  regress to hidden-when-left-sidebar-expanded).
+- **Symptom if broken:** the Open-in button only appears in the right sidebar
+  again, or shows twice in the tab bar (accidental double-add).
