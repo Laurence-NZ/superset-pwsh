@@ -112,7 +112,10 @@ export async function getProcessTreesForPids(
 	rootPids: number[],
 ): Promise<Map<number, number[]>> {
 	const trees = new Map<number, number[]>();
-	if (rootPids.length === 0) return trees;
+	const validRootPids = rootPids.filter(
+		(pid) => Number.isInteger(pid) && pid > 0,
+	);
+	if (validRootPids.length === 0) return trees;
 
 	const table = await getProcessTable();
 
@@ -125,7 +128,7 @@ export async function getProcessTreesForPids(
 		else childrenByPpid.set(ppid, [pid]);
 	}
 
-	for (const rootPid of rootPids) {
+	for (const rootPid of validRootPids) {
 		if (!alivePids.has(rootPid)) continue;
 		const pids: number[] = [];
 		const seen = new Set<number>();

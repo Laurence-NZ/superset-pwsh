@@ -91,6 +91,11 @@ describe("getProcessTreesForPids (real process table)", () => {
 		expect((await getProcessTreesForPids([])).size).toBe(0);
 	});
 
+	it("rejects non-positive and non-integer roots", async () => {
+		const trees = await getProcessTreesForPids([0, -1, 1.5]);
+		expect(trees.size).toBe(0);
+	});
+
 	it("includes the root pid and its descendants from one table read", async () => {
 		// Not `sleep` — this package supports win32, where that binary is absent.
 		const child = Bun.spawn([
