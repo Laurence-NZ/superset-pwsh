@@ -1018,7 +1018,10 @@ notify the user and switch to theirs.
   `bg-secondary/50` sidebar fill clashed with the tab bar's background, which
   differs between the empty and populated tab states; it also always shows the
   `/branch` label since the tab bar has no wide `@container` ancestor for the
-  `@[240px]` gate. `"sidebar"` (default) keeps the original filled pill.)
+  `@[240px]` gate. `"sidebar"` (default) keeps the original filled pill.);
+  `43cc247a6` (exact parity tweaks: added `shrink-0` to the wrapper — the run
+  button has it, so a tight tab bar no longer squishes the Open-in button — and
+  dropped a no-op `justify-center` the run button doesn't carry)
 - **Override policy:** **OVERRIDABLE — preference, not a bug.** Upstream `616bb6796`
   (#5824) deliberately moved the button into the sidebar's PR action header; this
   fork wants it always reachable from the top chrome. If upstream restores an
