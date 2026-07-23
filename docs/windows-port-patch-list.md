@@ -372,6 +372,13 @@ For **each** patch entry:
 - **Symptom if broken:** a `cmd.exe` window flashes and steals focus on
   app/workspace open (and after any dev host-service restart), exiting code 1
   with no visible output.
+- **Separate native crash in the same dependency (unfixed):** `@parcel/watcher`
+  2.5.6's win32 `ReadDirectoryChangesW` backend (the one this entry pins) also
+  faults with a **`0xC0000005` access violation** on its own watch worker
+  thread, taking down the host-service (tray "Host service crashed, exit code
+  3221225477") on worktree churn. Distinct from the console-flash above; do not
+  "fix" it by re-enabling the watchman probe. Diagnosis + native-dump capture
+  procedure: [`windows-crash-forensics.md`](windows-crash-forensics.md).
 - **Why on open, and why it seemed random:** the probe fires on **every fresh
   `subscribe()` for a not-already-watched path**. `workspace-fs` keeps one
   watcher per unique path (`watchers.get(absolutePath)` → `createWatcher` only
