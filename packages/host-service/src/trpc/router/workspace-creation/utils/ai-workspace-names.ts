@@ -13,8 +13,10 @@ import {
 } from "@superset/shared/agent-models";
 import {
 	envOverlayPrefix,
+	quotePowerShellArg,
 	quoteSingleShell,
 } from "@superset/shared/agent-prompt-launch";
+import { getWindowsCommandShellArgs } from "@superset/shared/shell";
 import { z } from "zod";
 import type { HostDb } from "../../../../db";
 import type { HostServiceContext } from "../../../../types";
@@ -87,6 +89,24 @@ const INSTRUCTIONS = [
 // on naming, so this is also the worst-case added create latency.
 const AGENT_GENERATE_TIMEOUT_MS = 20_000;
 
+// The shell the agent CLI is invoked through. On POSIX this is the user's
+// login shell (or a sensible default). Windows has no POSIX login shell and a
+// native Node process can't resolve `/bin/bash` (Git Bash's `/bin/*` mapping is
+// MSYS-only), so run the command through PowerShell, the fork's primary shell.
+const NAMING_SHELL =
+	process.platform === "win32"
+		? "powershell"
+		: process.env.SHELL ||
+			(process.platform === "darwin" ? "/bin/zsh" : "/bin/bash");
+
+// Quote one CLI argument for `NAMING_SHELL`: POSIX single-quote escaping, or
+// PowerShell's own rules (doubled single quotes / backtick-escaped newlines).
+function quoteNamingArg(value: string): string {
+	return process.platform === "win32"
+		? quotePowerShellArg(value)
+		: quoteSingleShell(value);
+}
+
 const AGENT_JSON_INSTRUCTIONS = [
 	INSTRUCTIONS,
 	"",
@@ -134,8 +154,10 @@ function resolveNonInteractiveCommand(
 	// `-p` consume the next token, so appending would swallow the prompt.
 	const modelArgs = buildAgentModelArgs(presetId, smallModel);
 	const [bin, ...flags] = base.split(" ");
-	const command = [bin, ...modelArgs.map(quoteSingleShell), ...flags].join(" ");
-	return `${envOverlayPrefix(buildAgentModelEnv(presetId, smallModel))}${command}`;
+	const command = [bin, ...modelArgs.map(quoteNamingArg), ...flags].join(" ");
+	return `${envOverlayPrefix(buildAgentModelEnv(presetId, smallModel), {
+		shell: NAMING_SHELL,
+	})}${command}`;
 }
 
 function extractNamesJson(
@@ -169,15 +191,8 @@ async function generateNamesViaAgentCli(
 	command: string,
 	prompt: string,
 ): Promise<GeneratedWorkspaceNames | null> {
-	const shell =
-		process.env.SHELL ||
-		(process.platform === "darwin" ? "/bin/zsh" : "/bin/bash");
 	const namingPrompt = `${AGENT_JSON_INSTRUCTIONS}\n\n<user-prompt>\n${prompt}\n</user-prompt>`;
-	// Login shell so the agent binary resolves like it does in the user's
-	// terminal (nvm/bun-global paths a GUI-launched host-service lacks).
-	// cwd is a scratch dir: naming runs before the worktree exists and the
-	// agent must not pick up repo context or act on files.
-	const shellCommand = `${command} ${quoteSingleShell(namingPrompt)}`;
+	const shellCommand = `${command} ${quoteNamingArg(namingPrompt)}`;
 
 	// This fallback only runs after the small-model path failed, so any
 	// provider keys in our env are absent or invalid — but the CLIs prefer
@@ -188,12 +203,29 @@ async function generateNamesViaAgentCli(
 	delete env.ANTHROPIC_API_KEY;
 	delete env.OPENAI_API_KEY;
 
+	// cwd is a scratch dir: naming runs before the worktree exists and the
+	// agent must not pick up repo context or act on files. POSIX uses a login
+	// shell so the agent binary resolves like it does in the user's terminal
+	// (nvm/bun-global paths a GUI-launched host-service lacks); Windows runs the
+	// command through PowerShell, whose args `shellCommand` is already quoted for.
 	const output = await new Promise<string | null>((resolve) => {
-		const child = spawn(shell, ["-lc", shellCommand], {
-			cwd: tmpdir(),
-			env,
-			stdio: ["ignore", "pipe", "pipe"],
-		});
+		const child =
+			process.platform === "win32"
+				? spawn(
+						NAMING_SHELL,
+						getWindowsCommandShellArgs(NAMING_SHELL, shellCommand) ?? [],
+						{
+							cwd: tmpdir(),
+							env,
+							stdio: ["ignore", "pipe", "pipe"],
+							windowsHide: true,
+						},
+					)
+				: spawn(NAMING_SHELL, ["-lc", shellCommand], {
+						cwd: tmpdir(),
+						env,
+						stdio: ["ignore", "pipe", "pipe"],
+					});
 		let stdout = "";
 		let stderr = "";
 		let settled = false;
