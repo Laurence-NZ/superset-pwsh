@@ -166,6 +166,13 @@ export default defineConfig({
 					// host-service worker thread — emitted side-by-side with
 					// host-service.js so the pool's script resolution finds it.
 					"host-worker": resolve("src/main/host-worker/index.ts"),
+					// fs-watcher subprocess — isolates @parcel/watcher's native
+					// Windows backend so its crashes don't take down the host. Spawned
+					// by SubprocessWatcherManager (win32 only). Emitted side-by-side
+					// so sibling-path resolution finds it.
+					"fs-watcher-subprocess": resolve(
+						"src/main/fs-watcher/fs-watcher-subprocess.ts",
+					),
 				},
 				output: {
 					dir: resolve(devPath, "main"),

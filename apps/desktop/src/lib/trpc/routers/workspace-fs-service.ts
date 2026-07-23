@@ -1,15 +1,37 @@
+import { existsSync } from "node:fs";
 import path from "node:path";
 import {
 	createFsHostService,
 	type FsHostService,
 	FsWatcherManager,
+	SubprocessWatcherManager,
 } from "@superset/workspace-fs/host";
 import { shell } from "electron";
 import { getWorkspace } from "./workspaces/utils/db-helpers";
 import { execWithShellEnv } from "./workspaces/utils/shell-env";
 import { getWorkspacePath } from "./workspaces/utils/worktree";
 
-const filesystemWatcherManager = new FsWatcherManager();
+// win32: isolate @parcel/watcher's crash-prone native backend in a child
+// process (see docs/windows-crash-forensics.md). Other platforms keep the
+// in-process native watcher. fs-watcher-subprocess.js is emitted side-by-side
+// with the main bundle (__dirname === dist/main).
+function createWatcherManager(): Pick<FsWatcherManager, "subscribe" | "close"> {
+	if (process.platform !== "win32") {
+		return new FsWatcherManager();
+	}
+	const scriptPath =
+		process.env.SUPERSET_FS_WATCHER_SCRIPT_PATH ??
+		path.join(__dirname, "fs-watcher-subprocess.js");
+	if (!existsSync(scriptPath)) {
+		console.error(
+			`[fs-watcher] subprocess script not found at ${scriptPath}; falling back to in-process watcher (crash risk)`,
+		);
+		return new FsWatcherManager();
+	}
+	return new SubprocessWatcherManager({ scriptPath });
+}
+
+const filesystemWatcherManager = createWatcherManager();
 
 const sharedHostServiceOptions = {
 	trashItem: async (absolutePath: string) => {

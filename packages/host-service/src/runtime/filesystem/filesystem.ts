@@ -1,12 +1,39 @@
+import { existsSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
 	createFsHostService,
 	type FsHostService,
 	FsWatcherManager,
 	getSearchIndex,
+	SubprocessWatcherManager,
 } from "@superset/workspace-fs/host";
 import { eq } from "drizzle-orm";
 import type { HostDb } from "../../db/index.ts";
 import { projects, workspaces } from "../../db/schema.ts";
+
+type WatcherManager = Pick<FsWatcherManager, "subscribe" | "close">;
+
+// win32: @parcel/watcher's native ReadDirectoryChangesW backend crashes the
+// host-service with a native use-after-free under worktree churn (see
+// docs/windows-crash-forensics.md), so run the watcher in an isolated child
+// process. Other platforms keep the in-process native watcher unchanged.
+function createWatcherManager(): WatcherManager {
+	if (process.platform !== "win32") {
+		return new FsWatcherManager();
+	}
+	const override = process.env.SUPERSET_FS_WATCHER_SCRIPT_PATH;
+	// host-service.js and fs-watcher-subprocess.js are emitted side-by-side.
+	const here = path.dirname(fileURLToPath(import.meta.url));
+	const scriptPath = override ?? path.resolve(here, "fs-watcher-subprocess.js");
+	if (!existsSync(scriptPath)) {
+		console.error(
+			`[fs-watcher] subprocess script not found at ${scriptPath}; falling back to in-process watcher (crash risk)`,
+		);
+		return new FsWatcherManager();
+	}
+	return new SubprocessWatcherManager({ scriptPath });
+}
 
 export interface WorkspaceFilesystemManagerOptions {
 	db: HostDb;
@@ -14,7 +41,7 @@ export interface WorkspaceFilesystemManagerOptions {
 
 export class WorkspaceFilesystemManager {
 	private readonly db: HostDb;
-	private readonly watcherManager = new FsWatcherManager();
+	private readonly watcherManager: WatcherManager = createWatcherManager();
 	private readonly serviceCache = new Map<string, FsHostService>();
 
 	constructor(options: WorkspaceFilesystemManagerOptions) {
