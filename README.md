@@ -9,20 +9,34 @@ is catalogued in [`docs/windows-port-patch-list.md`](docs/windows-port-patch-lis
 
 ## Setup
 
-1. **Install PowerShell 7** - this fork uses PowerShell 7 (`pwsh`) instead of
-   `cmd`
-   ([install guide](https://learn.microsoft.com/en-us/powershell/scripting/install/install-powershell-on-windows?view=powershell-7.6)).
-   - Only the **Store/MSIX package** version has been tested.
+1. Install PowerShell 7 - this fork uses [PowerShell 7](https://learn.microsoft.com/en-us/powershell/scripting/install/install-powershell-on-windows) (`pwsh`) instead of
+   `cmd`.
+   - Only the MSIX package version has been tested.
    - `winget install --id Microsoft.PowerShell --source winget`
-2. **Install Git for Windows** (2.20+) - the app shells out to `git` for all
+2. Install Git for Windows (2.20+) - the app shells out to `git` for all
    worktree/repo operations and won't function without it on your PATH.
    - `winget install --id Git.Git --source winget`
-   - Also install [GitHub CLI (`gh`)](https://cli.github.com/). It improves GitHub
-     auth and PR flows, but the app falls back to a built-in GitHub client if
-     it's absent.
-3. **Download the installer** from the
+3. Install [GitHub CLI](https://cli.github.com/) (`gh`).
+   - `winget install --id GitHub.cli --source winget`
+4. Download the installer from the
    [latest release](https://github.com/Laurence-NZ/superset-pwsh/releases/latest)
    and run it.
+
+## Enable Claude Notifications (recommended)
+
+The desktop app skips auto-registering its Claude Code notify hooks on Windows
+(see W11 in the patch list), so Claude Code session/tool activity won't surface
+as notifications by default. To wire them up, run:
+
+```powershell
+pwsh scripts/windows/setup-claude-notify.ps1
+```
+
+This installs `~/.claude/hooks/superset-notify.sh` (bridges Claude Code events
+into Superset; needs `bash` on PATH from Git for Windows) and merges the hook
+entries that call it into `~/.claude/settings.json`. Idempotent; backs up
+`settings.json` first, and manages only the bridge entries — every other hook
+and setting is left untouched.
 
 ## Development
 
@@ -67,22 +81,6 @@ For the upstream contributor guide for more info:
 [`DEVELOPMENT.md`](DEVELOPMENT.md) (its `.sh` setup steps are Unix-only; on
 Windows use the `.ts` flow above). Repo structure and DB/migration conventions
 are in [`AGENTS.md`](AGENTS.md).
-
-### Claude Status notifications (recommended)
-
-The desktop app skips auto-registering its Claude Code notify hooks on Windows
-(see W11 in the patch list), so Claude Code session/tool activity won't surface
-as notifications by default. To wire them up, run:
-
-```powershell
-pwsh scripts/windows/setup-claude-notify.ps1
-```
-
-This installs `~/.claude/hooks/superset-notify.sh` (bridges Claude Code events
-into Superset; needs `bash` on PATH from Git for Windows) and merges the hook
-entries that call it into `~/.claude/settings.json`. Idempotent; backs up
-`settings.json` first, and manages only the bridge entries — every other hook
-and setting is left untouched.
 
 ### Building
 
