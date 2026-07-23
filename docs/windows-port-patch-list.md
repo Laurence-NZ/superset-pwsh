@@ -1011,10 +1011,14 @@ notify the user and switch to theirs.
 
 ## F14 — v2 Open-in button duplicated into the always-visible pane tab bar
 
-- **Commits:** `babffc785`; `443552dfa` (added the opt-in `alwaysShowBranch`
-  prop so the tab-bar copy shows the `/branch` label — the tab bar has no wide
-  `@container` ancestor, so V2OpenInMenuButton's `@[240px]` gate otherwise kept
-  it icon-only while the sidebar copy showed the branch)
+- **Commits:** `babffc785`; `443552dfa` (branch-label handling, superseded by);
+  `011d4f49f` (added a `variant: "sidebar" | "tabbar"` prop to
+  `V2OpenInMenuButton`. `"tabbar"` gives the copy transparent chrome matching the
+  run button — same height, `rounded-md`, `hover:bg-muted` — because the reused
+  `bg-secondary/50` sidebar fill clashed with the tab bar's background, which
+  differs between the empty and populated tab states; it also always shows the
+  `/branch` label since the tab bar has no wide `@container` ancestor for the
+  `@[240px]` gate. `"sidebar"` (default) keeps the original filled pill.)
 - **Override policy:** **OVERRIDABLE — preference, not a bug.** Upstream `616bb6796`
   (#5824) deliberately moved the button into the sidebar's PR action header; this
   fork wants it always reachable from the top chrome. If upstream restores an
@@ -1029,13 +1033,13 @@ notify the user and switch to theirs.
   the upstream sidebar copy in `PRActionHeader` stays. Both share the same
   `V2WorkspaceOpenInButton` component and per-project default-app state, so they
   can't drift. The OPEN_IN_APP hotkey is owned separately by [F13] — neither
-  button registers it. The tab-bar copy passes `alwaysShowBranch` so its
-  `/branch` label matches the sidebar; `V2OpenInMenuButton.alwaysShowBranch`
-  defaults off, so every other caller (the sidebar) keeps the container-query
-  behaviour untouched.
+  button registers it. The tab-bar copy passes `variant="tabbar"` for run-button
+  chrome + always-on branch label; `V2OpenInMenuButton.variant` defaults to
+  `"sidebar"`, so every other caller (the sidebar) keeps its filled-pill
+  container-query behaviour untouched.
 - **Where:** `apps/desktop/src/renderer/routes/_authenticated/_dashboard/v2-workspace/$workspaceId/page.tsx`
   (`V2WorkspaceContent`, `renderTabBarTrailing`);
-  `V2WorkspaceOpenInButton` / `V2OpenInMenuButton` (the `alwaysShowBranch` prop).
+  `V2WorkspaceOpenInButton` / `V2OpenInMenuButton` (the `variant` prop).
 - **Scan for:** upstream re-adding an always-visible top-bar / tab-bar Open-in
   button (remove this duplicate, use theirs); a merge that rewrites
   `renderTabBarTrailing` and drops this instance (re-add it); the button being
