@@ -96,7 +96,7 @@ export function V2OpenInMenuButton({
 	// a collapsed right sidebar — see F13 in docs/windows-port-patch-list.md.
 
 	return (
-		<div className="flex items-center no-drag">
+		<div className="flex shrink-0 items-center no-drag">
 			<Tooltip>
 				<TooltipTrigger asChild>
 					<button
@@ -109,7 +109,7 @@ export function V2OpenInMenuButton({
 								: "Open in editor"
 						}
 						className={cn(
-							"group flex h-6 items-center justify-center gap-1.5 border border-r-0 text-xs font-medium",
+							"group flex h-6 items-center gap-1.5 border border-r-0 text-xs font-medium",
 							"focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
 							// tabbar: transparent chrome matching the run button; sidebar:
 							// filled pill with the branch label gated behind @[240px].
