@@ -788,6 +788,65 @@ For **each** patch entry:
 
 ---
 
+## W30 — Isolate the win32 fs-watcher in a child process
+
+- **Commits:** `ee1da54c2`.
+- **Override policy:** **OVERRIDABLE.** Trigger: if `@parcel/watcher` fixes the
+  Windows `ReadDirectoryChangesW` use-after-free (see W15 / the forensics doc),
+  drop the isolation and go back to an in-process `FsWatcherManager` on win32.
+  Notify the user.
+- **Invariant:** On win32, **both** `FsWatcherManager` instantiation sites run
+  the watcher in an isolated child process via `SubprocessWatcherManager`
+  (never `new FsWatcherManager()` in-process). macOS/Linux keep the in-process
+  native watcher. The child entry `fs-watcher-subprocess.js` must be emitted
+  side-by-side with `host-service.js` / the main bundle so sibling-path
+  resolution finds it.
+- **Why:** `@parcel/watcher@2.5.6`'s native `windows` backend faults with a
+  use-after-free (`0xC0000005`) on its own watch thread under worktree churn,
+  and `FsWatcherManager` runs **in-process** in the host-service (and the
+  Electron main process), so the fault takes the whole process down. There is
+  no `subscribe()`-capable non-native backend on Windows (brute-force is
+  snapshot-only), so the backend can't be swapped — isolate it instead. When the
+  child dies, `SubprocessWatcherManager` respawns it, re-subscribes every live
+  watch, invalidates the affected search indexes, and nudges consumers to
+  refetch; the host-service survives. Full diagnosis + native-dump capture:
+  [`windows-crash-forensics.md`](windows-crash-forensics.md).
+- **Design notes:** the seam is `createFsHostService`'s
+  `watcherManager: Pick<FsWatcherManager, "subscribe" | "close">`, so consumers
+  are unchanged. The child runs the real `FsWatcherManager`; the parent proxy
+  re-applies `patchSearchIndexesForRoot` from the forwarded event batches (the
+  search index lives in the parent, where searches run) and
+  `invalidateSearchIndexesForRoot` on (re)subscribe. Known minor gap: a kernel
+  overflow *while subscribed* isn't forwarded as an invalidate, so search can be
+  briefly stale until the next rebuild. Relation to **W15**: unchanged — the
+  win32 `backend: "windows"` pin stays; isolation contains its crash.
+- **Where:** `packages/workspace-fs/src/subprocess/` (`protocol.ts`,
+  `run-subprocess.ts`, `subprocess-watcher-manager.ts`);
+  `packages/workspace-fs/src/host/index.ts` (exports);
+  `apps/desktop/src/main/fs-watcher/fs-watcher-subprocess.ts` (child entry) +
+  its `electron.vite.config.ts` input entry;
+  `packages/host-service/src/runtime/filesystem/filesystem.ts` and
+  `apps/desktop/src/lib/trpc/routers/workspace-fs-service.ts` (win32-gated
+  wiring). Env override: `SUPERSET_FS_WATCHER_SCRIPT_PATH`.
+- **Scan for:** a new `new FsWatcherManager()` reachable on win32 without the
+  `SubprocessWatcherManager` gate (a third instantiation site, or a merge
+  reverting one of the two); removal of the `fs-watcher-subprocess` build entry;
+  a change to `createFsHostService`'s `watcherManager` contract that the proxy
+  no longer satisfies.
+- **Verify (Windows):** rebuild; create/destroy several workspaces while PR
+  sweeps / base-ref fetches run — no tray "Host service crashed (exit code
+  3221225477)". Then find the `Superset.exe` running `fs-watcher-subprocess.js`
+  and `taskkill /F` it: the host-service must stay up, log
+  `[fs-watcher] child exited … respawning`, and file-tree/git-status must keep
+  updating.
+- **Symptom if broken:** host-service crashes `0xC0000005` on worktree churn
+  (unisolated), or — if the child script isn't found/built — a logged fallback
+  to the in-process watcher (`subprocess script not found …`) that reintroduces
+  the crash, or file watching silently stops (no tree/git updates) if the child
+  crash-loops past its guard.
+
+---
+
 # §2 — Features & fixes
 
 Bug fixes and new functionality this branch carries that are **not** part of the

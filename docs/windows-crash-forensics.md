@@ -52,6 +52,9 @@ the watchman probe).
 
 ### Recommended fix direction
 
+> **Status: implemented** in patch-list entry **W30** (win32 fs-watcher runs in
+> an isolated child process). The notes below are the reasoning that led there.
+
 **Process-isolate the watcher.** On Windows the only `subscribe()`-capable
 @parcel/watcher backends are `windows` (`ReadDirectoryChangesW`, the one
 faulting) and `watchman` (needs watchman installed + the flash probe) — there is
