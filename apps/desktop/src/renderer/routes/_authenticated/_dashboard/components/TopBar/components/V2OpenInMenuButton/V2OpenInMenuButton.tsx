@@ -25,20 +25,25 @@ interface V2OpenInMenuButtonProps {
 	branch: string;
 	projectId: string;
 	/**
-	 * Force the `/branch` label to always render instead of gating it behind the
-	 * `@[240px]` container query. The sidebar copy sits in an `@container` wide
-	 * enough to reveal it, but the pane tab-bar copy has no such ancestor, so it
-	 * opts in here to match. See F14 in docs/windows-port-patch-list.md.
+	 * Where the button is placed, which drives its chrome:
+	 * - `"sidebar"` (default): filled `bg-secondary` pill; the `/branch` label is
+	 *   gated behind the `@[240px]` container query the sidebar header provides.
+	 * - `"tabbar"`: transparent chrome matching the run button (same height,
+	 *   `rounded-md`, `hover:bg-muted`) so it blends into the pane tab bar in both
+	 *   the empty and populated states; the `/branch` label always shows since the
+	 *   tab bar has no wide `@container` ancestor. See F14 in
+	 *   docs/windows-port-patch-list.md.
 	 */
-	alwaysShowBranch?: boolean;
+	variant?: "sidebar" | "tabbar";
 }
 
 export function V2OpenInMenuButton({
 	worktreePath,
 	branch,
 	projectId,
-	alwaysShowBranch = false,
+	variant = "sidebar",
 }: V2OpenInMenuButtonProps) {
+	const isTabBar = variant === "tabbar";
 	const activeTheme = useThemeStore((state) => state.activeTheme);
 
 	const { app: persistedApp, setApp: persistDefaultApp } =
@@ -104,17 +109,13 @@ export function V2OpenInMenuButton({
 								: "Open in editor"
 						}
 						className={cn(
-							// Icon-only when the nearest @container is narrow; the branch
-							// label comes back once there's room (right sidebar is resizable,
-							// so viewport breakpoints don't apply here). alwaysShowBranch
-							// opts out of the container gate for placements with no wide
-							// @container ancestor (the pane tab bar).
-							"group flex h-6 items-center justify-center gap-1.5 rounded-l border border-r-0 border-border/60 bg-secondary/50 px-1.5 text-xs font-medium",
-							alwaysShowBranch ? "pr-2" : "@[240px]:pr-2",
-							"transition-all duration-150 ease-out",
-							"hover:bg-secondary hover:border-border",
+							"group flex h-6 items-center justify-center gap-1.5 border border-r-0 text-xs font-medium",
 							"focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-							"active:scale-[0.98]",
+							// tabbar: transparent chrome matching the run button; sidebar:
+							// filled pill with the branch label gated behind @[240px].
+							isTabBar
+								? "rounded-l-md border-border/50 bg-transparent px-2 transition-colors hover:bg-muted/60"
+								: "rounded-l border-border/60 bg-secondary/50 px-1.5 @[240px]:pr-2 transition-all duration-150 ease-out hover:bg-secondary hover:border-border active:scale-[0.98]",
 							isLoading && "opacity-50 pointer-events-none",
 						)}
 					>
@@ -129,9 +130,7 @@ export function V2OpenInMenuButton({
 							<OverflowFadeText
 								className={cn(
 									"max-w-[140px] text-muted-foreground tabular-nums",
-									alwaysShowBranch
-										? "inline-block"
-										: "hidden @[240px]:inline-block",
+									isTabBar ? "inline-block" : "hidden @[240px]:inline-block",
 								)}
 								title={branch}
 							>
@@ -161,11 +160,11 @@ export function V2OpenInMenuButton({
 						type="button"
 						disabled={isLoading}
 						className={cn(
-							"flex items-center justify-center h-6 w-6 rounded-r border border-border/60 bg-secondary/50 text-muted-foreground",
-							"transition-all duration-150 ease-out",
-							"hover:bg-secondary hover:border-border hover:text-foreground",
+							"flex size-6 items-center justify-center border text-muted-foreground",
 							"focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-							"active:scale-[0.98]",
+							isTabBar
+								? "rounded-r-md border-border/50 bg-transparent transition-colors hover:bg-muted/60 hover:text-foreground"
+								: "rounded-r border-border/60 bg-secondary/50 transition-all duration-150 ease-out hover:bg-secondary hover:border-border hover:text-foreground active:scale-[0.98]",
 							isLoading && "opacity-50 pointer-events-none",
 						)}
 					>

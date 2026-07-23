@@ -331,7 +331,7 @@ function V2WorkspaceContent() {
 									{workspaceRunButton}
 									<V2WorkspaceOpenInButton
 										workspaceId={workspaceId}
-										alwaysShowBranch
+										variant="tabbar"
 									/>
 									<RightSidebarToggle />
 									{!isMac && <WindowControls />}

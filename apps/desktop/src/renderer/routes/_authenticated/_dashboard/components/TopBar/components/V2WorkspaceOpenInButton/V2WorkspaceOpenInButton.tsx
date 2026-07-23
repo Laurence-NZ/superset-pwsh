@@ -5,12 +5,12 @@ import { V2OpenInMenuButton } from "../V2OpenInMenuButton";
 interface V2WorkspaceOpenInButtonProps {
 	workspaceId: string;
 	/** Forwarded to V2OpenInMenuButton — see its prop docs and F14. */
-	alwaysShowBranch?: boolean;
+	variant?: "sidebar" | "tabbar";
 }
 
 export function V2WorkspaceOpenInButton({
 	workspaceId,
-	alwaysShowBranch,
+	variant,
 }: V2WorkspaceOpenInButtonProps) {
 	const { machineId, activeHostUrl } = useLocalHostService();
 
@@ -34,7 +34,7 @@ export function V2WorkspaceOpenInButton({
 			branch={workspace.branch}
 			worktreePath={workspace.worktreePath}
 			projectId={workspace.projectId}
-			alwaysShowBranch={alwaysShowBranch}
+			variant={variant}
 		/>
 	);
 }
