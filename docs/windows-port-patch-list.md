@@ -985,11 +985,16 @@ notify the user and switch to theirs.
 ## F13 — v2 OPEN_IN_APP hotkey registered at workspace level, not in the button
 
 - **Commits:** `e5d30ad43`
-- **Override policy:** **OVERRIDABLE.** Upstream introduced the coupling in
-  `616bb6796` (#5824) by moving the Open-in button into the sidebar with the
-  hotkey still registered inside it. If upstream decouples the shortcut from the
-  button's mount (e.g. registers it at a workspace/global level), adopt theirs
-  and delete this hook.
+- **Override policy:** **OVERRIDABLE — expected to be fixed upstream; prefer
+  theirs on sight.** This is a stopgap for a plain bug: upstream `616bb6796`
+  (#5824) moved the Open-in button into the sidebar but left the hotkey
+  registered inside it, so ⌘/Ctrl+O dies with a collapsed sidebar. It's the kind
+  of regression upstream will very likely fix. On any merge, if `main` decouples
+  the shortcut from the button's mount — registers `OPEN_IN_APP` at a
+  workspace/global level, or moves the button somewhere always-mounted — **delete
+  `useV2OpenInAppHotkey` and adopt upstream's**, and notify the user. Don't run
+  both (double-fire). Keep this hook only while upstream's shortcut is still
+  button-mount-coupled.
 - **Invariant:** The `OPEN_IN_APP` shortcut (⌘/Ctrl+O → open the worktree in the
   chosen editor) is registered once at the always-mounted workspace level
   (`useV2OpenInAppHotkey`, called from `V2WorkspaceContent`), **not** inside
@@ -1022,12 +1027,17 @@ notify the user and switch to theirs.
   `43cc247a6` (exact parity tweaks: added `shrink-0` to the wrapper — the run
   button has it, so a tight tab bar no longer squishes the Open-in button — and
   dropped a no-op `justify-center` the run button doesn't carry)
-- **Override policy:** **OVERRIDABLE — preference, not a bug.** Upstream `616bb6796`
-  (#5824) deliberately moved the button into the sidebar's PR action header; this
-  fork wants it always reachable from the top chrome. If upstream restores an
-  always-visible top-bar Open-in entry point, drop this duplicate and adopt
-  theirs. Removing this patch is safe — the sidebar button (upstream's) still
-  works on its own.
+- **Override policy:** **OVERRIDABLE — stopgap, expect this area to move again.**
+  Preference, not a bug: upstream `616bb6796` (#5824) deliberately moved the
+  button into the sidebar's PR action header; this fork wants it always reachable
+  from the top chrome. This top-right cluster is **volatile** — upstream has
+  already reorganized it twice recently (#5824 chrome reorg, #5887 sidebar
+  chips), so treat this duplicate as temporary. On any merge that touches
+  `renderTabBarTrailing`, the top-bar chrome, or the Open-in button placement,
+  **re-evaluate**: if upstream ships its own always-visible top-bar/tab-bar
+  Open-in entry point, drop this duplicate and adopt theirs (notify the user);
+  otherwise re-assert it wherever the trailing cluster moved to. Removing this
+  patch is always safe — the sidebar button (upstream's) still works on its own.
 - **Invariant:** `V2WorkspaceOpenInButton` renders in the v2 pane tab bar's
   trailing cluster (`renderTabBarTrailing`, beside the run button and
   right-sidebar toggle), which is visible in every sidebar state — unlike the
