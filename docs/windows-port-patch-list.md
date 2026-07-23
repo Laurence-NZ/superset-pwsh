@@ -746,6 +746,41 @@ For **each** patch entry:
 
 ---
 
+## W29 — Windows agent-CLI workspace naming runs through PowerShell
+
+- **Commits:** `e550791aa`.
+- **Override policy:** **OVERRIDABLE.** If upstream makes the agent-CLI naming
+  fallback shell-agnostic (resolves a platform shell with shell-aware quoting),
+  adopt its version and drop this patch.
+- **Invariant:** The agent-CLI fallback that names a workspace's title/branch
+  (`generateNamesViaAgentCli`) must not spawn a hard-coded POSIX `/bin/bash` on
+  win32 — a native Node process can't resolve `/bin/bash` (Git Bash's `/bin/*`
+  mapping is MSYS-only). On Windows it runs the command through PowerShell via
+  `getWindowsCommandShellArgs`, and both the env overlay and every CLI argument
+  (model args + naming prompt) are quoted for the target shell
+  (`envOverlayPrefix({ shell })`, `quotePowerShellArg`). POSIX keeps its
+  login-shell (`-lc`) invocation with single-quote escaping.
+- **Where:**
+  `packages/host-service/src/trpc/router/workspace-creation/utils/ai-workspace-names.ts`
+  (`NAMING_SHELL`, `quoteNamingArg`, `resolveNonInteractiveCommand`,
+  `generateNamesViaAgentCli`).
+- **Scan for:** a reintroduced `/bin/bash`/`process.env.SHELL` default or a
+  `spawn(shell, ["-lc", …])` with no win32 branch; `quoteSingleShell` or
+  `envOverlayPrefix(...)` used for the naming command without threading
+  `NAMING_SHELL`; any upstream refactor of the naming fallback's shell
+  invocation.
+- **Verify (Windows):** create a v2 workspace from a prompt with an agent
+  selected while the direct small-model path is unavailable (no
+  `ANTHROPIC_API_KEY`/`OPENAI_API_KEY` in the host-service env); confirm the
+  workspace gets an AI title/branch and the host-service log shows
+  `named via agent CLI` rather than
+  `[generateNamesViaAgentCli] spawn failed: ... spawn /bin/bash ENOENT`.
+- **Symptom if broken:** on Windows, prompt-driven workspaces never receive
+  AI-generated names via the agent CLI; the host-service log records
+  `[generateNamesViaAgentCli] spawn failed: ... ENOENT`.
+
+---
+
 # §2 — Features & fixes
 
 Bug fixes and new functionality this branch carries that are **not** part of the
