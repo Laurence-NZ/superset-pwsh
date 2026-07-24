@@ -790,7 +790,8 @@ For **each** patch entry:
 
 ## W30 — Isolate the win32 fs-watcher in a child process
 
-- **Commits:** `ee1da54c2`.
+- **Commits:** `ee1da54c2`; `22b1e41f3` (post-W30 ProcDump target and
+  containment runbook).
 - **Override policy:** **OVERRIDABLE.** Trigger: if `@parcel/watcher` fixes the
   Windows `ReadDirectoryChangesW` use-after-free (see W15 / the forensics doc),
   drop the isolation and go back to an in-process `FsWatcherManager` on win32.
