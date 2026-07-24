@@ -1,19 +1,29 @@
-# Windows crash forensics — host-service native crashes
+# Windows crash forensics — filesystem-watcher native crashes
 
-Diagnosis notes for the recurring Windows host-service crash and the procedure
-used to capture a native stack. Referenced from **W15** in
+Diagnosis notes for the recurring Windows filesystem-watcher crash and the
+procedure used to capture a native stack. Referenced from **W15** and **W30** in
 [`windows-port-patch-list.md`](windows-port-patch-list.md) (same dependency,
-different failure mode). No fix is committed yet — this records the diagnosis so
-the next agent doesn't re-derive it.
+different failure modes). **W30 contains the fault by running the native watcher
+in a restartable child process; it does not fix the fault inside
+`@parcel/watcher`.**
 
 ## Symptom
 
-The tray shows **"Host service crashed (exit code 3221225477)"**; in-flight
-renderer calls fail (e.g. workspace creation shows **"Failed to fetch"**). The
-host-service log ends on a normal `[host-service:diagnostics] heartbeat` with no
-error — a native crash leaves no JS trace, and the safety net in
-`packages/host-service/src/safety.ts` only catches JS `uncaughtException` /
-`unhandledRejection`, never a hard native fault.
+Before W30, the tray showed **"Host service crashed (exit code 3221225477)"** and
+in-flight renderer calls failed (e.g. workspace creation showed **"Failed to
+fetch"**). The host-service log ended on a normal
+`[host-service:diagnostics] heartbeat` because a native crash leaves no JS trace;
+the safety net in `packages/host-service/src/safety.ts` only catches JS
+`uncaughtException` / `unhandledRejection`, never a hard native fault.
+
+After W30, the host-service stays alive and logs:
+
+```text
+[fs-watcher] child exited (code=3221225477 signal=null); respawning and re-subscribing …
+```
+
+The replacement `Superset.exe … fs-watcher-subprocess.js` child should appear
+within seconds, and file-tree/git-status updates should resume.
 
 ## Reading the exit code
 
@@ -92,33 +102,41 @@ directories after pruning).
   2.5.6 is the current release, so this may need a patched addon or an upstream
   fix rather than a version bump.
 
-## Capturing a native stack (repro procedure)
+## Capturing a native stack (post-W30 repro procedure)
 
-Electron **Crashpad** intercepts the unhandled exception in-process, so no WER
-`Application Error` (1000) event and no `%LOCALAPPDATA%\CrashDumps` dump are
-produced for the host-service child. Attach a real debugger to the child instead
-(same-user attach — no admin):
+Do not rely on WER `Application Error` (1000) events or
+`%LOCALAPPDATA%\CrashDumps`; prior reproductions produced neither. Attach
+ProcDump to the isolated watcher child instead (same-user attach — no admin):
 
-1. Get procdump (Sysinternals, standalone): download `Procdump.zip`, unzip.
-2. The host-service runs as `Superset.exe "<...>\dist\main\host-service.js"`
-   (a `child_process.spawn(process.execPath, …)` run-as-node child — **no**
-   Crashpad in run-as-node mode, so a debugger catches the fault cleanly). It is
-   spawned on demand and respawned by the coordinator, so poll for it and attach
-   the instant it appears:
+1. Get ProcDump (Sysinternals, standalone): download `Procdump.zip`, unzip.
+2. Find the `Superset.exe` child whose command line contains
+   `fs-watcher-subprocess.js`:
    ```powershell
-   # find the pid
-   Get-CimInstance Win32_Process -Filter "Name='Superset.exe'" |
-     Where-Object { $_.CommandLine -match 'host-service\.js' } |
-     Select-Object ProcessId
-   # attach: full dump on the next unhandled (2nd-chance) exception
-   procdump64.exe -accepteula -ma -e <pid> hostsvc.dmp
+   $watcherProcess = Get-CimInstance Win32_Process -Filter "Name='Superset.exe'" |
+     Where-Object { $_.CommandLine -match 'fs-watcher-subprocess\.js' } |
+     Select-Object -First 1
+
+   $watcherProcess | Select-Object ProcessId, CommandLine
    ```
-   (Re-arm across respawns with a poll loop; key on the `host-service.js`
-   command line, never a bare `Superset.exe` name — renderers/GPU share it.)
-3. Reproduce (create a workspace). procdump writes a full `.dmp` on the AV.
-4. Identify the faulting module without symbols by parsing the minidump's
+   Never select by bare `Superset.exe` name; renderers, GPU processes, the
+   host-service, and other helpers share it.
+3. Attach for a full dump on the next unhandled (second-chance) exception:
+   ```powershell
+   procdump64.exe -accepteula -ma -e $watcherProcess.ProcessId fs-watcher.dmp
+   ```
+4. Reproduce worktree churn (workspace create/destroy is the known
+   correlation). ProcDump writes the dump when the watcher child faults. W30
+   then replaces that child, so find the new PID and re-attach if another
+   capture is required.
+5. Confirm containment separately: the host-service PID and uptime must remain
+   continuous while its log records the watcher-child exit and re-subscription.
+6. Identify the faulting module without symbols by parsing the minidump's
    `ModuleListStream` (type 4) + `ExceptionStream` (type 6): map
    `ExceptionAddress` into `[BaseOfImage, +SizeOfImage)`. Field offsets that
    bit me: array starts at `streamRva+4`; per-module `ModuleNameRva` is at
    **+20** (after `BaseOfImage`/8, `SizeOfImage`/4, `CheckSum`/4,
    `TimeDateStamp`/4), record stride 108.
+
+If W30 logs `subprocess script not found … falling back to in-process watcher`,
+the fault is back inside `host-service.js`. Only in that fallback diagnosis
+should ProcDump target the `Superset.exe … host-service.js` process.
