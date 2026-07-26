@@ -75,7 +75,11 @@ For **each** patch entry:
   existsSync` readiness check, matching the sibling tests in
   `packages/host-service/test/integration/terminal.integration.test.ts`. New
   daemon integration tests must use the named-pipe-aware helpers, never a raw
-  `.sock` path.)
+  `.sock` path.);
+  `95f2a6ad1` (2026-07-27 merge: upstream #5256 added the terminal
+  send/snapshot node test with a raw Unix `.sock` path and `/bin/sh`. Adapted
+  it to a Windows named pipe and platform shell, with its two POSIX-specific
+  bracketed-paste/alternate-screen cases skipped on win32.)
 - **Override policy:** **LOCKED.** Upstream targets macOS/Linux; there is no
   upstream Windows port to defer to. Later, finer-grained W-entries refine and
   extend this base; verify them individually as they are migrated in.
