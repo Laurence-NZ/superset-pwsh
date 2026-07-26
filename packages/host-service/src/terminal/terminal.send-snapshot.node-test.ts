@@ -44,8 +44,11 @@ import { __setAccountShellForTesting } from "./user-shell.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TEST_HOME = path.join(os.tmpdir(), `host-svc-sendsnap-${process.pid}`);
-const SOCK = path.join(os.tmpdir(), `host-svc-sendsnap-${process.pid}.sock`);
+const IS_WINDOWS = process.platform === "win32";
+const SOCK = makeTestDaemonSocketPath("host-svc-sendsnap");
 const MIGRATIONS = path.resolve(__dirname, "../../drizzle");
+const TEST_SHELL = IS_WINDOWS ? (process.env.COMSPEC ?? "cmd.exe") : "/bin/sh";
+const testPosix = IS_WINDOWS ? test.skip : test;
 
 let server: Server;
 let db: HostDb;
@@ -54,6 +57,14 @@ let workspaceId: string;
 let otherWorkspaceId: string;
 let worktreePath: string;
 let otherWorktreePath: string;
+
+function makeTestDaemonSocketPath(prefix: string): string {
+	const id = `${prefix}-${process.pid}`;
+	if (IS_WINDOWS) {
+		return String.raw`\\.\pipe\${id}`;
+	}
+	return path.join(os.tmpdir(), `${id}.sock`);
+}
 
 before(async () => {
 	fs.mkdirSync(TEST_HOME, { recursive: true });
@@ -73,11 +84,13 @@ before(async () => {
 	process.env.HOST_SERVICE_VERSION = "0.0.0-sendsnap-e2e";
 	process.env.NODE_ENV = "development";
 
-	__setAccountShellForTesting("/bin/sh");
+	__setAccountShellForTesting(TEST_SHELL);
 	initTerminalBaseEnv({
-		PATH: process.env.PATH ?? "/usr/bin:/bin",
-		HOME: process.env.HOME ?? TEST_HOME,
-		SHELL: "/bin/sh",
+		COMSPEC: process.env.COMSPEC ?? "cmd.exe",
+		PATH: process.env.PATH ?? (IS_WINDOWS ? "" : "/usr/bin:/bin"),
+		HOME: process.env.HOME ?? process.env.USERPROFILE ?? TEST_HOME,
+		SHELL: TEST_SHELL,
+		USERPROFILE: process.env.USERPROFILE ?? TEST_HOME,
 	});
 
 	db = createDb(path.join(TEST_HOME, "host.db"), MIGRATIONS);
@@ -195,7 +208,9 @@ describe("writeFramedInputToSession / snapshotSession", () => {
 			workspaceId,
 			db,
 			listed: true,
-			initialCommand: `printf 'one\\ntwo\\n%s\\n' "${marker}"`,
+			initialCommand: IS_WINDOWS
+				? `echo one & echo two & echo ${marker}`
+				: `printf 'one\\ntwo\\n%s\\n' "${marker}"`,
 		});
 		assert.ok(!("error" in session));
 		if ("error" in session) return;
@@ -224,95 +239,101 @@ describe("writeFramedInputToSession / snapshotSession", () => {
 		await disposeSessionAndWait(terminalId, db);
 	});
 
-	test("multi-line send is paste-framed only when the program enabled bracketed paste", async () => {
-		const terminalId = `e2e-paste-${randomUUID().slice(0, 8)}`;
-		const id = randomUUID().slice(0, 6);
-		const captureFile = path.join(TEST_HOME, `paste-${terminalId}`);
-		const doneFile = path.join(TEST_HOME, `paste-done-${terminalId}`);
+	testPosix(
+		"multi-line send is paste-framed only when the program enabled bracketed paste",
+		async () => {
+			const terminalId = `e2e-paste-${randomUUID().slice(0, 8)}`;
+			const id = randomUUID().slice(0, 6);
+			const captureFile = path.join(TEST_HOME, `paste-${terminalId}`);
+			const doneFile = path.join(TEST_HOME, `paste-done-${terminalId}`);
 
-		// The shell itself has paste mode off; `printf` turns it on the way a
-		// TUI agent does at startup, then `cat` captures exactly the bytes the
-		// PTY delivers to the foreground program.
-		const session = await createTerminalSessionInternal({
-			terminalId,
-			workspaceId,
-			db,
-			listed: true,
-			initialCommand: `printf '\\033[?2004h'; cat > "${captureFile}"; printf '\\033[?2004l'; echo done > "${doneFile}"`,
-		});
-		assert.ok(!("error" in session));
-		if ("error" in session) return;
+			// The shell itself has paste mode off; `printf` turns it on the way a
+			// TUI agent does at startup, then `cat` captures exactly the bytes the
+			// PTY delivers to the foreground program.
+			const session = await createTerminalSessionInternal({
+				terminalId,
+				workspaceId,
+				db,
+				listed: true,
+				initialCommand: `printf '\\033[?2004h'; cat > "${captureFile}"; printf '\\033[?2004l'; echo done > "${doneFile}"`,
+			});
+			assert.ok(!("error" in session));
+			if ("error" in session) return;
 
-		await waitFor(() => session.modeTracker.isBracketedPasteActive(), 5000);
+			await waitFor(() => session.modeTracker.isBracketedPasteActive(), 5000);
 
-		const sent = await writeFramedInputToSession({
-			terminalId,
-			workspaceId,
-			text: `line1-${id}\nline2-${id}`,
-			submit: true,
-			db,
-		});
-		assert.ok(!("error" in sent));
+			const sent = await writeFramedInputToSession({
+				terminalId,
+				workspaceId,
+				text: `line1-${id}\nline2-${id}`,
+				submit: true,
+				db,
+			});
+			assert.ok(!("error" in sent));
 
-		// EOF for cat: the framed write ended in Enter, so input is at line
-		// start and a single ^D terminates it. Sent byte-exact — the framed
-		// path would paste-wrap the control char (send has text semantics).
-		const eof = writeInputToSession({
-			terminalId,
-			workspaceId,
-			data: "\x04",
-		});
-		assert.ok(!("error" in eof));
+			// EOF for cat: the framed write ended in Enter, so input is at line
+			// start and a single ^D terminates it. Sent byte-exact — the framed
+			// path would paste-wrap the control char (send has text semantics).
+			const eof = writeInputToSession({
+				terminalId,
+				workspaceId,
+				data: "\x04",
+			});
+			assert.ok(!("error" in eof));
 
-		await waitFor(() => fs.existsSync(doneFile), 5000);
-		const captured = fs.readFileSync(captureFile, "latin1");
-		assert.ok(
-			captured.includes(`\x1b[200~line1-${id}\nline2-${id}\x1b[201~`),
-			`expected paste-framed payload, got: ${JSON.stringify(captured)}`,
-		);
+			await waitFor(() => fs.existsSync(doneFile), 5000);
+			const captured = fs.readFileSync(captureFile, "latin1");
+			assert.ok(
+				captured.includes(`\x1b[200~line1-${id}\nline2-${id}\x1b[201~`),
+				`expected paste-framed payload, got: ${JSON.stringify(captured)}`,
+			);
 
-		// After `cat` exits, `printf '\\033[?2004l'` turned paste mode off
-		// again; the same send must now go through unframed.
-		await waitFor(() => !session.modeTracker.isBracketedPasteActive(), 5000);
-		const plainFile = path.join(TEST_HOME, `plain-${terminalId}`);
-		const plain = await writeFramedInputToSession({
-			terminalId,
-			workspaceId,
-			text: `echo plain-${id} > "${plainFile}"`,
-			submit: true,
-			db,
-		});
-		assert.ok(!("error" in plain));
-		await waitFor(() => fs.existsSync(plainFile), 5000);
+			// After `cat` exits, `printf '\\033[?2004l'` turned paste mode off
+			// again; the same send must now go through unframed.
+			await waitFor(() => !session.modeTracker.isBracketedPasteActive(), 5000);
+			const plainFile = path.join(TEST_HOME, `plain-${terminalId}`);
+			const plain = await writeFramedInputToSession({
+				terminalId,
+				workspaceId,
+				text: `echo plain-${id} > "${plainFile}"`,
+				submit: true,
+				db,
+			});
+			assert.ok(!("error" in plain));
+			await waitFor(() => fs.existsSync(plainFile), 5000);
 
-		await disposeSessionAndWait(terminalId, db);
-	});
+			await disposeSessionAndWait(terminalId, db);
+		},
+	);
 
-	test("snapshot reads the alt-screen buffer while a TUI is active", async () => {
-		const terminalId = `e2e-alt-${randomUUID().slice(0, 8)}`;
-		const id = randomUUID().slice(0, 6);
+	testPosix(
+		"snapshot reads the alt-screen buffer while a TUI is active",
+		async () => {
+			const terminalId = `e2e-alt-${randomUUID().slice(0, 8)}`;
+			const id = randomUUID().slice(0, 6);
 
-		// Enter the alt screen and draw a marker assembled by printf so the
-		// echoed command line (which stays in the normal buffer) can't match.
-		const session = await createTerminalSessionInternal({
-			terminalId,
-			workspaceId,
-			db,
-			listed: true,
-			initialCommand: `printf '\\033[?1049h\\033[HALT-%s' "${id}"`,
-		});
-		assert.ok(!("error" in session));
-		if ("error" in session) return;
+			// Enter the alt screen and draw a marker assembled by printf so the
+			// echoed command line (which stays in the normal buffer) can't match.
+			const session = await createTerminalSessionInternal({
+				terminalId,
+				workspaceId,
+				db,
+				listed: true,
+				initialCommand: `printf '\\033[?1049h\\033[HALT-%s' "${id}"`,
+			});
+			assert.ok(!("error" in session));
+			if ("error" in session) return;
 
-		await waitForSnapshotText(terminalId, `ALT-${id}`, 5000);
+			await waitForSnapshotText(terminalId, `ALT-${id}`, 5000);
 
-		const snap = await snapshotSession({ terminalId, workspaceId, db });
-		assert.ok(!("error" in snap));
-		if ("error" in snap) return;
-		assert.ok(snap.text.includes(`ALT-${id}`));
+			const snap = await snapshotSession({ terminalId, workspaceId, db });
+			assert.ok(!("error" in snap));
+			if ("error" in snap) return;
+			assert.ok(snap.text.includes(`ALT-${id}`));
 
-		await disposeSessionAndWait(terminalId, db);
-	});
+			await disposeSessionAndWait(terminalId, db);
+		},
+	);
 
 	test("send and snapshot adopt a daemon session after host-service restart simulation", async () => {
 		const terminalId = `e2e-sendadopt-${randomUUID().slice(0, 8)}`;
@@ -394,7 +415,7 @@ describe("writeFramedInputToSession / snapshotSession", () => {
 			workspaceId,
 			db,
 			listed: true,
-			initialCommand: `echo last-words-${id}; exit 0`,
+			initialCommand: `echo last-words-${id}${IS_WINDOWS ? " & " : "; "}exit 0`,
 		});
 		assert.ok(!("error" in session));
 		if ("error" in session) return;

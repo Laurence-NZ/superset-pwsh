@@ -11,8 +11,8 @@ import {
 	listWorkspaceTerminalSessions,
 	parseThemeType,
 	sessionHasRunningProcess,
-	writeCommandsToSession,
 	snapshotSession,
+	writeCommandsToSession,
 	writeFramedInputToSession,
 	writeInputToSession,
 } from "../../../terminal/terminal";
