@@ -45,6 +45,7 @@ import { listTerminalResourceSessions } from "./resource-sessions.ts";
 import {
 	createModeTracker,
 	type ModeTracker,
+	type TerminalSnapshot,
 } from "./terminal-mode-tracker.ts";
 
 /**
@@ -211,13 +212,29 @@ type TerminalSocket = {
 // ---------------------------------------------------------------------------
 
 /**
+ * Upper bound on the OSC 133;A wait before queued automation runs anyway.
+ * Wrapper files on disk don't guarantee the marker reaches the scanner —
+ * a user rc can exec another process or re-point ZDOTDIR so our .zlogin
+ * never runs — and an unbounded wait silently drops preset/agent commands
+ * (#4963, regressed by #5774). 15s covers heavy setups like Nix devenv
+ * via direnv; same budget as the v1 stack.
+ */
+const SHELL_READY_TIMEOUT_MS = 15_000;
+
+/**
  * Shell readiness lifecycle:
  * - `pending`     — shell initialising; scanner active
  * - `ready`       — OSC 133;A detected; scanner off
+ * - `timed_out`   — marker never arrived in time; queued automation runs anyway
  * - `unsupported` — launch config has no marker; scanner never started
  * - `cancelled`   — session ended before readiness; queued automation cancelled
  */
-type ShellReadyState = "pending" | "ready" | "unsupported" | "cancelled";
+type ShellReadyState =
+	| "pending"
+	| "ready"
+	| "timed_out"
+	| "unsupported"
+	| "cancelled";
 
 interface TerminalSession {
 	terminalId: string;
@@ -259,6 +276,7 @@ interface TerminalSession {
 	shellReadyState: ShellReadyState;
 	shellReadyResolve: (() => void) | null;
 	shellReadyPromise: Promise<void>;
+	shellReadyTimeoutId: ReturnType<typeof setTimeout> | null;
 	scanState: ShellReadyScanState;
 	initialCommandQueued: boolean;
 	shell: string;
@@ -573,6 +591,128 @@ export function writeCommandsToSession({
 	return { success: true };
 }
 
+// Ring-buffer replay after adoption arrives asynchronously over the daemon
+// socket, and it is what rebuilds the mode tracker (bracketed paste, screen
+// content). Protocol v2 has no replay-complete signal, so watch the replayed
+// bytes accumulate — they land in session.buffer, since no renderer is
+// attached right after adoption — and return once they quiesce.
+const ADOPTION_REPLAY_WAIT_MS = 500;
+
+async function waitForAdoptionReplay(session: TerminalSession): Promise<void> {
+	const deadline = Date.now() + ADOPTION_REPLAY_WAIT_MS;
+	let seen = -1;
+	while (Date.now() < deadline) {
+		const count = session.bufferBytes;
+		if (count > 0 && count === seen) return;
+		seen = count;
+		await new Promise((resolve) => setTimeout(resolve, 25));
+	}
+}
+
+/**
+ * Resolve a session for headless IO. The in-memory map empties on every
+ * host-service restart while the detached daemon keeps PTYs alive, so a
+ * miss is not "gone" — recover it the same way pane auto-adoption does.
+ */
+async function getOrAdoptSession({
+	terminalId,
+	workspaceId,
+	db,
+	eventBus,
+}: {
+	terminalId: string;
+	workspaceId: string;
+	db: HostDb;
+	eventBus?: EventBus;
+}): Promise<TerminalSession | { error: string }> {
+	const existing = sessions.get(terminalId);
+	if (existing) {
+		if (existing.workspaceId !== workspaceId) {
+			return { error: "Terminal session does not belong to this workspace" };
+		}
+		return existing;
+	}
+
+	const adopted = await createTerminalSessionInternal({
+		terminalId,
+		workspaceId,
+		db,
+		eventBus,
+		adoptOnly: true,
+	});
+	if ("error" in adopted) return adopted;
+
+	await waitForAdoptionReplay(adopted);
+	return adopted;
+}
+
+/**
+ * Public "send a follow-up to whatever runs in this terminal" path. Frames
+ * the text as a bracketed paste when the running program has that mode on,
+ * so embedded newlines reach a TUI agent (claude/codex) as literal newlines
+ * rather than premature Enter presses.
+ */
+export async function writeFramedInputToSession({
+	terminalId,
+	workspaceId,
+	text,
+	submit,
+	db,
+	eventBus,
+}: {
+	terminalId: string;
+	workspaceId: string;
+	text: string;
+	submit: boolean;
+	db: HostDb;
+	eventBus?: EventBus;
+}): Promise<{ success: true } | { error: string }> {
+	const session = await getOrAdoptSession({
+		terminalId,
+		workspaceId,
+		db,
+		eventBus,
+	});
+	if ("error" in session) return session;
+	if (session.exited) {
+		return { error: "Terminal session has exited" };
+	}
+
+	const framed = session.modeTracker.isBracketedPasteActive()
+		? `\x1b[200~${text}\x1b[201~`
+		: text;
+	session.pty.write(submit ? `${framed}\r` : framed);
+	return { success: true };
+}
+
+/**
+ * Non-destructive read of the terminal's current screen (and recent
+ * scrollback) off the per-session headless emulator. For TUI agents this is
+ * the alt-screen the agent renders to — i.e. its visible output.
+ */
+export async function snapshotSession({
+	terminalId,
+	workspaceId,
+	maxLines,
+	db,
+	eventBus,
+}: {
+	terminalId: string;
+	workspaceId: string;
+	maxLines?: number;
+	db: HostDb;
+	eventBus?: EventBus;
+}): Promise<({ success: true } & TerminalSnapshot) | { error: string }> {
+	const session = await getOrAdoptSession({
+		terminalId,
+		workspaceId,
+		db,
+		eventBus,
+	});
+	if ("error" in session) return session;
+	return { success: true, ...session.modeTracker.snapshot(maxLines) };
+}
+
 function sendMessage(
 	socket: { send: (data: string) => void; readyState: number },
 	message: TerminalServerMessage,
@@ -712,10 +852,32 @@ export function replayBuffer(session: TerminalSession, socket: TerminalSocket) {
 	sendBytes(socket, combined);
 }
 
-/** Transition out of `pending` after the scanner matches the prompt marker. */
-function resolveShellReady(session: TerminalSession): void {
+function clearShellReadyTimeout(session: TerminalSession): void {
+	if (session.shellReadyTimeoutId) {
+		clearTimeout(session.shellReadyTimeoutId);
+		session.shellReadyTimeoutId = null;
+	}
+}
+
+/** Transition out of `pending` on marker match or timeout expiry. */
+function resolveShellReady(
+	session: TerminalSession,
+	state: "ready" | "timed_out",
+): void {
 	if (session.shellReadyState !== "pending") return;
-	session.shellReadyState = "ready";
+	session.shellReadyState = state;
+	clearShellReadyTimeout(session);
+	// On timeout the scanner may be withholding a partial marker prefix that
+	// never completed — those bytes are real output and must be released.
+	if (session.scanState.heldBytes.length > 0) {
+		const heldBytes = Uint8Array.from(session.scanState.heldBytes);
+		session.scanState.heldBytes.length = 0;
+		session.scanState.matchPos = 0;
+		session.modeTracker.feed(heldBytes);
+		if (broadcastBytes(session, heldBytes) === 0) {
+			bufferOutput(session, heldBytes);
+		}
+	}
 	if (session.shellReadyResolve) {
 		session.shellReadyResolve();
 		session.shellReadyResolve = null;
@@ -726,6 +888,7 @@ function resolveShellReady(session: TerminalSession): void {
 function cancelShellReady(session: TerminalSession): void {
 	if (session.shellReadyState !== "pending") return;
 	session.shellReadyState = "cancelled";
+	clearShellReadyTimeout(session);
 	if (session.shellReadyResolve) {
 		session.shellReadyResolve();
 		session.shellReadyResolve = null;
@@ -760,8 +923,10 @@ function queueInitialCommand(
 	// that prompt so the command cannot be consumed as startup input. Launches
 	// without a verified marker resolve this promise immediately — that includes
 	// every Windows shell (pwsh/cmd never emit OSC 133;A), so this stays a no-op
-	// gate there. W19: append the shell-aware line ending (bare CR for pwsh, not
-	// CRLF) so PSReadLine accepts the line instead of stranding a `>>` prompt.
+	// gate there. A missing marker resolves it via SHELL_READY_TIMEOUT_MS — the
+	// command must eventually run; only session teardown may cancel it. W19:
+	// append the shell-aware line ending (bare CR for pwsh, not CRLF) so
+	// PSReadLine accepts the line instead of stranding a `>>` prompt.
 	void session.shellReadyPromise.then(() => {
 		if (!session.exited && session.shellReadyState !== "cancelled") {
 			session.pty.write(appendShellLineEnding(initialCommand, session.shell));
@@ -1317,6 +1482,7 @@ export async function createTerminalSessionInternal({
 				: "unsupported",
 		shellReadyResolve,
 		shellReadyPromise,
+		shellReadyTimeoutId: null,
 		scanState: createScanState(),
 		// Adopted sessions have already run their initialCommand in the prior
 		// host-service lifetime — flag it as queued so we don't double-fire it.
@@ -1327,6 +1493,12 @@ export async function createTerminalSessionInternal({
 	};
 	sessions.set(terminalId, session);
 	portManager.upsertSession(terminalId, workspaceId, pty.pid);
+
+	if (session.shellReadyState === "pending") {
+		session.shellReadyTimeoutId = setTimeout(() => {
+			resolveShellReady(session, "timed_out");
+		}, SHELL_READY_TIMEOUT_MS);
+	}
 
 	session.unsubscribeDaemon = daemon.subscribe(
 		terminalId,
@@ -1349,7 +1521,7 @@ export async function createTerminalSessionInternal({
 					const result = scanForShellReady(session.scanState, chunk);
 					bytes = result.output;
 					if (result.matched) {
-						resolveShellReady(session);
+						resolveShellReady(session, "ready");
 					}
 				}
 				if (bytes.byteLength === 0) return;
