@@ -97,7 +97,7 @@ export function V2OpenInMenuButton({
 
 	return (
 		<div className="flex shrink-0 items-center no-drag">
-			<Tooltip>
+			<Tooltip delayDuration={1000}>
 				<TooltipTrigger asChild>
 					<button
 						type="button"
@@ -141,13 +141,10 @@ export function V2OpenInMenuButton({
 				</TooltipTrigger>
 				<TooltipContent side="bottom" sideOffset={6}>
 					{currentApp ? (
-						<div className="flex flex-col gap-0.5">
-							<HotkeyLabel
-								label={`Open in ${currentApp.displayLabel ?? currentApp.label}`}
-								id="OPEN_IN_APP"
-							/>
-							<span className="text-muted-foreground">{worktreePath}</span>
-						</div>
+						<HotkeyLabel
+							label={`Open in ${currentApp.displayLabel ?? currentApp.label}`}
+							id="OPEN_IN_APP"
+						/>
 					) : (
 						"Select an editor from the dropdown"
 					)}

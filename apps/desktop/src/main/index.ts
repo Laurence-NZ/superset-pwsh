@@ -40,10 +40,6 @@ import { getHostServiceCoordinator } from "./lib/host-service-coordinator";
 import { localDb } from "./lib/local-db";
 import { requestLocalNetworkAccess } from "./lib/local-network-permission";
 import {
-	startMemoryTelemetry,
-	stopMemoryTelemetry,
-} from "./lib/memory-telemetry";
-import {
 	initTanstackDbPersistence,
 	shutdownTanstackDbPersistence,
 } from "./lib/persistence/persistence";
@@ -244,7 +240,6 @@ app.on("before-quit", async (event) => {
 	markAppQuitRequested();
 	isQuitting = true;
 	try {
-		stopMemoryTelemetry();
 		getHostServiceCoordinator().stopAll();
 		if (isDev || forceFullCleanup) {
 			await teardownTerminalHost();
@@ -467,7 +462,6 @@ if (!gotTheLock) {
 
 		await makeAppSetup(() => MainWindow());
 		setupAutoUpdater();
-		startMemoryTelemetry();
 		initTray();
 
 		const coldStartUrl = findDeepLinkInArgv(process.argv);
