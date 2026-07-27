@@ -17,9 +17,9 @@ function readTemplate(name: string): string {
 
 describe("getNotifyScriptContent", () => {
 	it("bumps the notify hook marker when hook semantics change", () => {
-		expect(NOTIFY_SCRIPT_MARKER).toBe("# Superset agent notification hook v5");
+		expect(NOTIFY_SCRIPT_MARKER).toBe("# Superset agent notification hook v6");
 		expect(WINDOWS_NOTIFY_SCRIPT_MARKER).toBe(
-			"rem Superset agent notification hook v5",
+			"rem Superset agent notification hook v6",
 		);
 	});
 
@@ -49,6 +49,8 @@ describe("getNotifyScriptContent", () => {
 		expect(script).toContain("SUPERSET_HOST_AGENT_HOOK_URL");
 		expect(script).toContain("SUPERSET_AGENT_ID");
 		expect(script).toContain("/hook/complete");
+		expect(script).toContain('["session_id", "sessionId"]');
+		expect(script).toContain('["hook_event_name", "hookEventName"]');
 	});
 
 	it("emits the v2 host-service payload with full agent identity", () => {

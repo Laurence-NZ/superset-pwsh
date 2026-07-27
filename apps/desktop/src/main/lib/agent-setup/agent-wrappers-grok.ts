@@ -64,6 +64,10 @@ export function getGrokHooksJsonContent(): string {
 }
 
 export function createGrokHooksJson(): void {
+	// Windows port: don't create a managed file under ~/.grok/hooks. Users
+	// manage their own global agent hooks on win32; mirrors the W11 injectors.
+	if (process.platform === "win32") return;
+
 	const hooksPath = getGrokHooksJsonPath();
 	fs.mkdirSync(path.dirname(hooksPath), { recursive: true });
 	const changed = writeFileIfChanged(
@@ -160,6 +164,11 @@ export function getGrokConfigTomlContent(existing: string): string {
 }
 
 export function createGrokConfigToml(): void {
+	// Windows port: don't merge managed compat settings into ~/.grok/config.toml.
+	// The notify command itself supports win32, but global dotfiles stay
+	// user-owned; mirrors the W11 injectors.
+	if (process.platform === "win32") return;
+
 	const configPath = getGrokConfigTomlPath();
 	const existing = fs.existsSync(configPath)
 		? fs.readFileSync(configPath, "utf-8")

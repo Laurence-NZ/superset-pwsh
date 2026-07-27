@@ -6,9 +6,9 @@ import { HOOKS_DIR } from "./paths";
 export const NOTIFY_SCRIPT_NAME = "notify.sh";
 export const WINDOWS_NOTIFY_SCRIPT_NAME = "notify.cmd";
 export const WINDOWS_NOTIFY_NODE_SCRIPT_NAME = "notify.mjs";
-export const NOTIFY_SCRIPT_MARKER = "# Superset agent notification hook v5";
+export const NOTIFY_SCRIPT_MARKER = "# Superset agent notification hook v6";
 export const WINDOWS_NOTIFY_SCRIPT_MARKER =
-	"rem Superset agent notification hook v5";
+	"rem Superset agent notification hook v6";
 
 const NOTIFY_SCRIPT_TEMPLATE_PATH = path.join(
 	__dirname,
@@ -137,10 +137,10 @@ function debug(message) {
 
 async function main() {
   const payload = parsePayload(await readInput());
-  const hookSessionId = field(payload, ["session_id"]);
+  const hookSessionId = field(payload, ["session_id", "sessionId"]);
   const resourceId = field(payload, ["resourceId", "resource_id"]);
   const sessionId = resourceId || hookSessionId;
-  let eventType = field(payload, ["hook_event_name"]);
+  let eventType = field(payload, ["hook_event_name", "hookEventName"]);
 
   if (!eventType) {
     const codexType = field(payload, ["type"]);
