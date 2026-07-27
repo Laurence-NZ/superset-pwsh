@@ -31,7 +31,7 @@ user to re-run the skill to pull the rest. `--all` merges everything in one go.
 
 ## 2. Refresh upstream and pick the merge target
 
-- `git fetch origin main` — refreshes `origin/main` (upstream) without leaving the current branch. Merge everything from `origin/main`, never a local `main`.
+- `git fetch origin main:main` — refreshes `origin/main` (upstream) **and** fast-forwards the local `main` branch to match it, all without leaving the current branch. The `main:main` refspec updates the local `main` ref in place; it fails loudly (no merge, no checkout) if local `main` has diverged — if that happens, tell the user rather than forcing it. Merge everything from `origin/main`, never a local `main`.
 - Count what's incoming: `git rev-list --count HEAD..origin/main`.
 - **Merge target** — the SHA to merge in step 3:
   - `--all` passed, or count ≤ ~20 → target is `origin/main` (merge everything).
