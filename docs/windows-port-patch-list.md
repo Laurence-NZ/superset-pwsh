@@ -276,6 +276,15 @@ For **each** patch entry:
   **new** agent's dotfile injector with no win32 guard (droid/mastra/vibe/amp
   share the latent bug, currently unused). Kimi was the realized case: it landed
   on the 2026-07-20 merge without a guard and was added here.
+- **Verify tests (Windows):** Run the notify-hook and wrapper tests in separate
+  Bun processes; `agent-wrappers.test.ts` mocks `./notify-hook` at module scope,
+  so combining them contaminates `notify-hook.test.ts`. Filter the wrapper run
+  to the relevant agent because its unfiltered Pi install assertion expects the
+  global file write that W11 intentionally skips:
+  ```powershell
+  bun test apps/desktop/src/main/lib/agent-setup/notify-hook.test.ts
+  bun test apps/desktop/src/main/lib/agent-setup/agent-wrappers.test.ts --test-name-pattern grok
+  ```
 - **Opt-in re-enable (standalone script):** since the app skips auto-inject on
   win32, users wire the Claude hooks on demand with
   `scripts/windows/setup-claude-notify.ps1` (`pwsh …`, documented in
