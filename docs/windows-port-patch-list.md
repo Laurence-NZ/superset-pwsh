@@ -151,17 +151,19 @@ For **each** patch entry:
   `"lf"`. (The old audit prose said `"auto"`; that was wrong — committed value
   is `lf`.)
 
-## W4 — Claude notify-hook command works on Windows
+## W4 — Managed notify-hook commands work on Windows
 
-- **Commits:** `b930f6267`
+- **Commits:** `b930f6267`, `104193b18` (Grok camelCase payload support)
 - **Override policy:** **LOCKED** (Windows-specific command construction).
-- **Invariant:** The managed Claude notify-hook resolves to a Windows-runnable
-  entrypoint (`notify.cmd` / Node dispatcher) rather than a bare POSIX `.sh`
-  command. Built in shared helpers, not per-caller.
+- **Invariant:** Each managed notify-hook resolves to a Windows-runnable
+  entrypoint (`notify.cmd` / Node dispatcher) rather than a bare POSIX `.sh`.
+  The Node dispatcher accepts each managed agent's payload spelling, including
+  Grok's `sessionId` / `hookEventName`. Built in shared helpers, not per-caller.
 - **Where:** `@superset/shared/shell` (`getManagedNotifyHookCommand` /
-  `buildNotifyHookCommand`); agent notify-hook setup.
+  `buildNotifyHookCommand`); `notify-hook.ts`; agent notify-hook setup.
 - **Scan for:** new notify-hook command construction that emits `bash …` / `.sh`
-  with no `.cmd`/Node Windows branch.
+  with no `.cmd`/Node Windows branch, or a new payload field spelling handled
+  only by `notify-hook.template.sh` and not the Windows Node dispatcher.
 
 ## W5 — repoPath-keyed setup override works on Windows
 
@@ -253,20 +255,23 @@ For **each** patch entry:
 
 - **Commits:** `86ce750ab` (`createClaudeSettingsJson`), `8e5ba3be9`
   (cursor/codex/gemini/pi), `052e0f837` (`createKimiConfigToml` — new upstream
-  injector guarded on the 2026-07-20 main merge)
+  injector guarded on the 2026-07-20 main merge), `104193b18`
+  (`createGrokHooksJson` / `createGrokConfigToml`)
 - **Override policy:** **LOCKED** (Windows-specific no-op).
 - **Invariant:** On win32 the dotfile hook injectors are no-ops:
   `createClaudeSettingsJson`, `createCodexHooksJson`, `createCursorHooksJson`,
-  `createGeminiSettingsJson`, `createPiExtension`, `createKimiConfigToml`. On
-  Windows they'd churn a user-tracked global dotfile every launch (and for the
-  non-Windows-adapted ones, emit a bare POSIX `.sh` command that can't run); the
-  user wires their own per-agent hooks. The paired `create*HookScript` /
-  `create*Wrapper` writers still run (the `SUPERSET_HOME_DIR/hooks/*.sh` scripts
-  must stay). Note: codex and kimi commands ARE Windows-adapted (they route
-  through `getManagedNotifyHookCommand` → `notify.cmd`), so their skip is by
-  user preference to avoid churning a tracked dotfile, not because it's broken.
+  `createGeminiSettingsJson`, `createPiExtension`, `createKimiConfigToml`,
+  `createGrokHooksJson`, `createGrokConfigToml`. On Windows they'd churn a
+  user-tracked global dotfile every launch (and for the non-Windows-adapted
+  ones, emit a bare POSIX `.sh` command that can't run); the user wires their
+  own per-agent hooks. The paired `create*HookScript` / `create*Wrapper` writers
+  still run (the `SUPERSET_HOME_DIR/hooks/*.sh` scripts must stay). Codex, Kimi,
+  and Grok commands are Windows-adapted through
+  `getManagedNotifyHookCommand` → `notify.cmd`; their skip is user preference,
+  not a command limitation.
 - **Where:** `apps/desktop/src/main/lib/agent-setup/agent-wrappers-claude-codex-opencode.ts`,
   `agent-wrappers-{cursor,gemini,pi}.ts`, and `agent-wrappers-kimi.ts`.
+  Grok's two injectors live in `agent-wrappers-grok.ts`.
 - **Scan for:** merge changes to these injectors that drop the win32 guard, or a
   **new** agent's dotfile injector with no win32 guard (droid/mastra/vibe/amp
   share the latent bug, currently unused). Kimi was the realized case: it landed
