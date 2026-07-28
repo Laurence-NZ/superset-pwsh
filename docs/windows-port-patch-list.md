@@ -79,7 +79,11 @@ For **each** patch entry:
   `95f2a6ad1` (2026-07-27 merge: upstream #5256 added the terminal
   send/snapshot node test with a raw Unix `.sock` path and `/bin/sh`. Adapted
   it to a Windows named pipe and platform shell, with its two POSIX-specific
-  bracketed-paste/alternate-screen cases skipped on win32.)
+  bracketed-paste/alternate-screen cases skipped on win32.);
+  `ceebf5745` (2026-07-29 merge: upstream #5820 replaced `useVersionCheck`
+  with `useDesktopNotices`. Routed the replacement version-notice fetch through
+  `getRuntimeApiUrl()` so packaged builds retain the renderer API-URL
+  sanitization choke point.)
 - **Override policy:** **LOCKED.** Upstream targets macOS/Linux; there is no
   upstream Windows port to defer to. Later, finer-grained W-entries refine and
   extend this base; verify them individually as they are migrated in.
