@@ -162,9 +162,11 @@ For **each** patch entry:
 - **Invariant:** Each managed notify-hook resolves to a Windows-runnable
   entrypoint (`notify.cmd` / Node dispatcher) rather than a bare POSIX `.sh`.
   The Node dispatcher accepts each managed agent's payload spelling, including
-  Grok's `sessionId` / `hookEventName`. Built in shared helpers, not per-caller.
-- **Where:** `@superset/shared/shell` (`getManagedNotifyHookCommand` /
-  `buildNotifyHookCommand`); `notify-hook.ts`; agent notify-hook setup.
+  Grok's `sessionId` / `hookEventName`. Built in shared agent-wrapper helpers,
+  not per-caller.
+- **Where:** `apps/desktop/src/main/lib/agent-setup/agent-wrappers-common.ts`
+  (`getManagedNotifyHookCommand` / `buildNotifyHookCommand`);
+  `notify-hook.ts`; agent notify-hook setup.
 - **Scan for:** new notify-hook command construction that emits `bash …` / `.sh`
   with no `.cmd`/Node Windows branch, or a new payload field spelling handled
   only by `notify-hook.template.sh` and not the Windows Node dispatcher.
