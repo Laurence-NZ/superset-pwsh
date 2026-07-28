@@ -6,6 +6,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo } from "react";
 import { env } from "renderer/env.renderer";
+import { getRuntimeApiUrl } from "renderer/lib/desktop-runtime-flags";
 import { useAppVersionHistoryStore } from "renderer/stores/app-version-history";
 import { useDesktopNoticeDismissalsStore } from "renderer/stores/desktop-notice-dismissals";
 import { useDesktopNoticePreviewStore } from "renderer/stores/desktop-notice-preview";
@@ -58,9 +59,7 @@ export function useDesktopNotices(): UseDesktopNoticesResult {
 	const { data } = useQuery({
 		queryKey: ["desktop-notices"],
 		queryFn: async () => {
-			const response = await fetch(
-				`${env.NEXT_PUBLIC_API_URL}/api/desktop/version`,
-			);
+			const response = await fetch(`${getRuntimeApiUrl()}/api/desktop/version`);
 			if (!response.ok) {
 				throw new Error(`desktop version check failed: ${response.status}`);
 			}
