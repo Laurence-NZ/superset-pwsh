@@ -135,8 +135,7 @@ describe("setup scripts integration", () => {
 			await waitFor(
 				() =>
 					writes.includes("echo setup-a && echo setup-b") &&
-					writes.indexOf("\r") >
-						writes.indexOf("echo setup-a && echo setup-b"),
+					writes.indexOf("\r") > writes.indexOf("echo setup-a && echo setup-b"),
 				5000,
 				() =>
 					`expected setup command write + Enter, got ${JSON.stringify(writes)}`,

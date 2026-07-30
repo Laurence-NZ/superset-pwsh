@@ -1,7 +1,4 @@
-import {
-	buildShellCommandChain,
-	getKnownShell,
-} from "@superset/shared/shell";
+import { buildShellCommandChain, getKnownShell } from "@superset/shared/shell";
 import { eq } from "drizzle-orm";
 import { projects, workspaces } from "../../../../db/schema";
 import {

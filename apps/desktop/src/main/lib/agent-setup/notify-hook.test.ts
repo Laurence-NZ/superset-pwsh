@@ -123,30 +123,33 @@ describe("getNotifyScriptContent", () => {
 		expect(script).toContain("SUPERSET_PANE_ID");
 	});
 
-	itBash("normalizes Grok permission notifications to PermissionRequest", () => {
-		const result = runNotifyHook({
-			hookEventName: "notification",
-			notificationType: "permission_prompt",
-		});
+	itBash(
+		"normalizes Grok permission notifications to PermissionRequest",
+		() => {
+			const result = runNotifyHook({
+				hookEventName: "notification",
+				notificationType: "permission_prompt",
+			});
 
-		expect(result.exitCode).toBe(0);
-		expect(result.stderr.toString()).toContain(
-			"[notify-hook] event=PermissionRequest",
-		);
-	});
+			expect(result.exitCode).toBe(0);
+			expect(result.stderr.toString()).toContain(
+				"[notify-hook] event=PermissionRequest",
+			);
+		},
+	);
 
 	itBash(
 		"normalizes Grok ask_user_question notifications to PermissionRequest",
 		() => {
-		const result = runNotifyHook({
-			hookEventName: "notification",
-			notificationType: "elicitation_dialog",
-		});
+			const result = runNotifyHook({
+				hookEventName: "notification",
+				notificationType: "elicitation_dialog",
+			});
 
-		expect(result.exitCode).toBe(0);
-		expect(result.stderr.toString()).toContain(
-			"[notify-hook] event=PermissionRequest",
-		);
+			expect(result.exitCode).toBe(0);
+			expect(result.stderr.toString()).toContain(
+				"[notify-hook] event=PermissionRequest",
+			);
 		},
 	);
 
