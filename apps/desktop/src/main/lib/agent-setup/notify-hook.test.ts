@@ -9,6 +9,8 @@ import {
 	WINDOWS_NOTIFY_SCRIPT_MARKER,
 } from "./notify-hook";
 
+const itBash = process.platform === "win32" ? it.skip : it;
+
 function readTemplate(name: string): string {
 	return readFileSync(path.join(import.meta.dir, "templates", name), "utf-8")
 		.replaceAll("\r\n", "\n")
@@ -32,11 +34,25 @@ function runNotifyHook(input: Record<string, unknown>) {
 	});
 }
 
+function runNotifyNodeHook(input: Record<string, unknown>) {
+	return Bun.spawnSync({
+		cmd: [process.execPath, "-e", getNotifyNodeScriptContent()],
+		env: {
+			...process.env,
+			SUPERSET_AGENT_ID: "grok",
+			SUPERSET_DEBUG_HOOKS: "1",
+		},
+		stdin: Buffer.from(JSON.stringify(input)),
+		stdout: "pipe",
+		stderr: "pipe",
+	});
+}
+
 describe("getNotifyScriptContent", () => {
 	it("bumps the notify hook marker when hook semantics change", () => {
-		expect(NOTIFY_SCRIPT_MARKER).toBe("# Superset agent notification hook v6");
+		expect(NOTIFY_SCRIPT_MARKER).toBe("# Superset agent notification hook v7");
 		expect(WINDOWS_NOTIFY_SCRIPT_MARKER).toBe(
-			"rem Superset agent notification hook v6",
+			"rem Superset agent notification hook v7",
 		);
 	});
 
@@ -107,7 +123,7 @@ describe("getNotifyScriptContent", () => {
 		expect(script).toContain("SUPERSET_PANE_ID");
 	});
 
-	it("normalizes Grok permission notifications to PermissionRequest", () => {
+	itBash("normalizes Grok permission notifications to PermissionRequest", () => {
 		const result = runNotifyHook({
 			hookEventName: "notification",
 			notificationType: "permission_prompt",
@@ -119,8 +135,33 @@ describe("getNotifyScriptContent", () => {
 		);
 	});
 
-	it("normalizes Grok ask_user_question notifications to PermissionRequest", () => {
+	itBash(
+		"normalizes Grok ask_user_question notifications to PermissionRequest",
+		() => {
 		const result = runNotifyHook({
+			hookEventName: "notification",
+			notificationType: "elicitation_dialog",
+		});
+
+		expect(result.exitCode).toBe(0);
+		expect(result.stderr.toString()).toContain(
+			"[notify-hook] event=PermissionRequest",
+		);
+		},
+	);
+
+	itBash("ignores unrelated Grok notification subtypes", () => {
+		const result = runNotifyHook({
+			hookEventName: "notification",
+			notificationType: "idle_prompt",
+		});
+
+		expect(result.exitCode).toBe(0);
+		expect(result.stderr.toString()).toBe("");
+	});
+
+	it("normalizes Grok permission notifications in the Windows Node hook", () => {
+		const result = runNotifyNodeHook({
 			hookEventName: "notification",
 			notificationType: "elicitation_dialog",
 		});
@@ -131,8 +172,8 @@ describe("getNotifyScriptContent", () => {
 		);
 	});
 
-	it("ignores unrelated Grok notification subtypes", () => {
-		const result = runNotifyHook({
+	it("ignores unrelated Grok notifications in the Windows Node hook", () => {
+		const result = runNotifyNodeHook({
 			hookEventName: "notification",
 			notificationType: "idle_prompt",
 		});

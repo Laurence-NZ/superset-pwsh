@@ -6,9 +6,9 @@ import { HOOKS_DIR } from "./paths";
 export const NOTIFY_SCRIPT_NAME = "notify.sh";
 export const WINDOWS_NOTIFY_SCRIPT_NAME = "notify.cmd";
 export const WINDOWS_NOTIFY_NODE_SCRIPT_NAME = "notify.mjs";
-export const NOTIFY_SCRIPT_MARKER = "# Superset agent notification hook v6";
+export const NOTIFY_SCRIPT_MARKER = "# Superset agent notification hook v7";
 export const WINDOWS_NOTIFY_SCRIPT_MARKER =
-	"rem Superset agent notification hook v6";
+	"rem Superset agent notification hook v7";
 
 const NOTIFY_SCRIPT_TEMPLATE_PATH = path.join(
 	__dirname,
@@ -147,6 +147,17 @@ async function main() {
     if (["agent-turn-complete", "task_complete"].includes(codexType)) eventType = "Stop";
     else if (codexType === "task_started") eventType = "Start";
     else if (["exec_approval_request", "apply_patch_approval_request", "request_user_input"].includes(codexType)) eventType = "PermissionRequest";
+  }
+
+  // Keep the Windows Node dispatcher in sync with notify-hook.template.sh.
+  // Grok emits blocking user prompts as Notification subtypes.
+  if (eventType === "notification") {
+    const notificationType = field(payload, ["notificationType"]);
+    if (["permission_prompt", "elicitation_dialog"].includes(notificationType)) {
+      eventType = "PermissionRequest";
+    } else {
+      return;
+    }
   }
 
   if (eventType === "UserPromptSubmit") eventType = "Start";
