@@ -83,7 +83,10 @@ For **each** patch entry:
   `ceebf5745` (2026-07-29 merge: upstream #5820 replaced `useVersionCheck`
   with `useDesktopNotices`. Routed the replacement version-notice fetch through
   `getRuntimeApiUrl()` so packaged builds retain the renderer API-URL
-  sanitization choke point.)
+  sanitization choke point.);
+  `bf6fedd63` (2026-07-31 merge: upstream #5978 introduced a reusable
+  host-service respawn config provider. Kept its cloud URL routed through
+  `getMainApiUrl()` so respawns retain packaged-build URL sanitization.)
 - **Override policy:** **LOCKED.** Upstream targets macOS/Linux; there is no
   upstream Windows port to defer to. Later, finer-grained W-entries refine and
   extend this base; verify them individually as they are migrated in.
@@ -157,7 +160,10 @@ For **each** patch entry:
 
 ## W4 — Managed notify-hook commands work on Windows
 
-- **Commits:** `b930f6267`, `104193b18` (Grok camelCase payload support)
+- **Commits:** `b930f6267`, `104193b18` (Grok camelCase payload support),
+  `978bf43a4` (2026-07-31 merge: upstream #6025 added blocking Grok
+  Notification subtypes to the POSIX hook; mirrored the normalization in the
+  Windows Node dispatcher and covered it with native subprocess tests)
 - **Override policy:** **LOCKED** (Windows-specific command construction).
 - **Invariant:** Each managed notify-hook resolves to a Windows-runnable
   entrypoint (`notify.cmd` / Node dispatcher) rather than a bare POSIX `.sh`.
@@ -304,7 +310,9 @@ For **each** patch entry:
 
 ## W12 — Lost V2 terminal sessions tombstone read-only (no silent respawn)
 
-- **Commits:** `61c892c1e`
+- **Commits:** `61c892c1e`, `20b3567ee` (2026-07-31 merge: upstream #6036
+  added `session-gone` scrollback cleanup. Kept `SESSION_ENDED` exited rows out
+  of that cleanup path so Windows restart tombstones retain their snapshot.)
 - **Override policy:** **LOCKED**, but **behaviour-changing on all platforms —
   flag if this ever feeds upstream.** macOS/Linux now tombstone read-only after
   a reboot/daemon-crash instead of silently respawning a fresh shell.
@@ -504,19 +512,24 @@ For **each** patch entry:
   kept that gate but write through `appendShellLineEnding(initialCommand,
   session.shell)`, not upstream's `initialCommand + "\n"`. On win32 the gate is a
   no-op — `shellLaunchExpectsReadyMarker` returns false for pwsh/cmd (they never
-  emit OSC 133;A), so the promise resolves immediately.)
+  emit OSC 133;A), so the promise resolves immediately.);
+  `bf6fedd63` (2026-07-31 merge: upstream #6026 now sends initial-command text
+  and a delayed bare `\r` Enter as separate writes. Adopted that path; it
+  preserves the PowerShell invariant without `appendShellLineEnding` at this
+  call site.)
 - **Override policy:** **LOCKED** (PSReadLine keystroke semantics).
 - **Why:** PSReadLine accepts the line on the CR, then treats the trailing LF of
   a CRLF as a fresh keystroke — stranding a `>>` continuation prompt. A lone CR
   is what the Enter key actually sends. `cmd.exe` tolerates CRLF, so it's left
   as-is.
-- **Invariant:** `getShellLineEnding` returns a lone CR for pwsh. Covers every
-  launch routed through `appendShellLineEnding` (`queueInitialCommand` for
-  terminal-preset / agent-button `initialCommand`, and `writeCommands`). Known
-  gap: the renderer's shell-agnostic `normalizeTerminalCommand` still appends a
-  bare LF (`writeInput` path) — a no-op accept on pwsh; give it shell awareness
-  if that path is exercised on Windows.
-- **Where:** `packages/shared/src/shell.ts` (`getShellLineEnding`).
+- **Invariant:** `getShellLineEnding` returns a lone CR for pwsh.
+  `queueInitialCommand` sends command text and a delayed bare `\r` as separate
+  writes; other host-service command launches use `appendShellLineEnding`.
+  Known gap: the renderer's shell-agnostic `normalizeTerminalCommand` still
+  appends a bare LF (`writeInput` path) — a no-op accept on pwsh; give it shell
+  awareness if that path is exercised on Windows.
+- **Where:** `packages/shared/src/shell.ts` (`getShellLineEnding`);
+  `packages/host-service/src/terminal/terminal.ts` (`queueInitialCommand`).
 - **Scan for:** new command-write paths hardcoding CRLF/LF for pwsh instead of
   going through `getShellLineEnding`; changes to `getShellLineEnding`.
 - **Symptom if broken:** after a terminal preset (e.g. one that runs `clear`) or
@@ -540,7 +553,11 @@ For **each** patch entry:
   the launch shell once (`resolveLaunchShell(getTerminalBaseEnv())`) and threads
   it through `buildAgentCommandString` + `envOverlayPrefix` for everyone (POSIX
   output unchanged). `buildAgentCommandString` lives in `agents.ts` and is the
-  sole launch path again.
+  sole launch path again;
+  `bf6fedd63` (2026-07-31 merge: upstream #5925 extracted
+  `buildTerminalAgentLaunch` for setup-gated launches. Preserved the resolved
+  shell through both `buildAgentCommandString` and `envOverlayPrefix` in the
+  extracted builder.)
 - **Override policy:** **LOCKED** (pwsh parser semantics). **Re-introduction
   trigger:** if upstream re-lands a `/bin/sh` + `/dev/tty` launcher-script
   pipeline (#5784 or similar), it can never be the Windows launch path — re-add
@@ -582,7 +599,9 @@ For **each** patch entry:
 
 ## W22 — Chain V2 *setup* commands with `&&` under pwsh 7
 
-- **Commits:** `6a26e800a`
+- **Commits:** `6a26e800a`, `2e5be1de9` (2026-07-31 merge: upstream #5925
+  added setup→agent chaining. Replaced its hard-coded `&&` join with
+  `buildShellCommandChain` using the resolved terminal shell.)
 - **Override policy:** **LOCKED** (Windows shell semantics). Companion to **W7**,
   but a different code path: W7 chains *agent-launch* commands, this chains the
   *workspace-setup* command line.
@@ -593,9 +612,11 @@ For **each** patch entry:
   a plain `&&` like POSIX/cmd.
 - **Invariant:** `buildSetupCommand` only special-cases `knownShell ===
   "powershell"` (Windows PowerShell 5.1) for the `$?`-guard chaining; `pwsh`
-  (and POSIX/cmd) join with `&&`.
+  (and POSIX/cmd) join configured setup commands with `&&`. When an agent is
+  chained after the complete setup command, use `buildShellCommandChain` with
+  the resolved shell so both PowerShell variants get a valid `$?` guard.
 - **Where:** `packages/host-service/src/trpc/router/workspace-creation/shared/setup-terminal.ts`
-  (`buildSetupCommand`).
+  (`buildSetupCommand`, `buildSetupAndAgentCommand`).
 - **Scan for:** changes to `buildSetupCommand` that revert pwsh to the
   `$?`-guard form, or a new setup-command path that hard-joins with `&&` before
   the shell is known / doesn't distinguish pwsh 7 from PowerShell 5.1.
