@@ -515,6 +515,26 @@ describe("terminal-ws-transport", () => {
 		expect(onSessionEnded).toHaveBeenCalledTimes(1);
 	});
 
+	test("SESSION_ENDED preserves scrollback for a read-only tombstone", () => {
+		const onSessionEnded = mock(() => {});
+		const transport = createTransport({ onSessionEnded });
+		connect(transport, createMockTerminal(), "ws://host/terminal/t1");
+		const socket = FakeRelaySocket.instances.at(-1);
+		if (!socket) throw new Error("expected relay socket instance");
+		socket.open();
+
+		socket.message(
+			JSON.stringify({
+				type: "error",
+				message: "SESSION_ENDED",
+			}),
+		);
+
+		expect(transport.lastDiagnosis?.category).toBe("session_ended");
+		expect(transport.sessionEnded).toBe(false);
+		expect(onSessionEnded).not.toHaveBeenCalled();
+	});
+
 	test("a plain server error does not mark the session ended", () => {
 		const onSessionEnded = mock(() => {});
 		const transport = createTransport({ onSessionEnded });

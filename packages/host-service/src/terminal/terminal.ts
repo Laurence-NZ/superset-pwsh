@@ -1759,10 +1759,10 @@ export function registerWorkspaceTerminalRoute({
 					};
 				}
 				if (record.status === "exited") {
-					return {
-						error: SESSION_ENDED_ERROR,
-						code: "session-gone",
-					};
+					// W12: an exited persisted row is the read-only tombstone source.
+					// Keep its saved scrollback; `session-gone` tells the renderer to
+					// delete that state and is reserved for missing/disposed sessions.
+					return { error: SESSION_ENDED_ERROR };
 				}
 				if (!record.originWorkspaceId) {
 					return {
