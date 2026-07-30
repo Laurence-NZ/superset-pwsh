@@ -1,4 +1,7 @@
-import { getKnownShell } from "@superset/shared/shell";
+import {
+	buildShellCommandChain,
+	getKnownShell,
+} from "@superset/shared/shell";
 import { eq } from "drizzle-orm";
 import { projects, workspaces } from "../../../../db/schema";
 import {
@@ -15,9 +18,9 @@ interface StartSetupTerminalArgs {
 	ctx: HostServiceContext;
 	workspaceId: string;
 	/**
-	 * Appended to the resolved setup command with ` && `, so it runs in the
-	 * setup terminal only after setup succeeds. Ignored when no setup command
-	 * resolves — the caller must then dispatch it separately.
+	 * Appended to the resolved setup command with shell-aware failure chaining,
+	 * so it runs in the setup terminal only after setup succeeds. Ignored when
+	 * no setup command resolves — the caller must then dispatch it separately.
 	 */
 	chainCommand?: string;
 }
@@ -60,18 +63,23 @@ export async function startSetupTerminalIfPresent(
 		return { terminal: null, warning: null, chained: false };
 	}
 
+	const setupShell = resolveSetupShell();
 	const resolved = resolveInitialCommand({
 		repoPath: row.repoPath,
 		projectId: row.projectId,
 		worktreePath: row.worktreePath,
-		shell: resolveSetupShell(),
+		shell: setupShell,
 	});
 	if (!resolved) {
 		return { terminal: null, warning: null, chained: false };
 	}
 
 	const initialCommand = args.chainCommand
-		? `${resolved.initialCommand} && ${args.chainCommand}`
+		? buildSetupAndAgentCommand(
+				resolved.initialCommand,
+				args.chainCommand,
+				setupShell,
+			)
 		: resolved.initialCommand;
 
 	const terminalId = crypto.randomUUID();
@@ -144,6 +152,22 @@ export function buildSetupCommand(
 	}
 
 	return commands.join(" && ");
+}
+
+/**
+ * Chain an agent behind setup using the terminal's actual shell. In
+ * particular, Windows PowerShell 5.1 cannot parse `&&`.
+ */
+export function buildSetupAndAgentCommand(
+	setupCommand: string,
+	agentCommand: string,
+	shell?: string,
+	platform: NodeJS.Platform = process.platform,
+): string {
+	return buildShellCommandChain([setupCommand, agentCommand], {
+		shell,
+		platform,
+	});
 }
 
 /**

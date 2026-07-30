@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+	buildSetupAndAgentCommand,
 	buildSetupCommand,
 	buildSetupScriptCommand,
 	resolveInitialCommand,
@@ -113,6 +114,20 @@ describe("resolveInitialCommand", () => {
 
 		expect(command).toBe("bun install && bun run db:migrate");
 		expect(command).not.toContain("$?");
+	});
+
+	it("chains an agent behind setup for the Windows launch shell", () => {
+		expect(
+			buildSetupAndAgentCommand(
+				"bun install",
+				"claude",
+				"powershell.exe",
+				"win32",
+			),
+		).toBe("bun install; if ($?) { claude }");
+		expect(
+			buildSetupAndAgentCommand("bun install", "claude", "pwsh.exe", "win32"),
+		).toBe("bun install; if ($?) { claude }");
 	});
 
 	it("uses the PowerShell setup chain when resolving configured setup commands", () => {
