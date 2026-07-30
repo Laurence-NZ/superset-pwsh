@@ -163,7 +163,10 @@ type TerminalClientMessage =
 // from live data.
 type TerminalServerMessage =
 	| { type: "attached"; terminalId: string }
-	| { type: "error"; message: string }
+	// `code: "session-gone"` marks the session as permanently destroyed (not
+	// found / disposed / exited) so the renderer can drop persisted scrollback;
+	// plain errors leave it unset and the renderer keeps its snapshot.
+	| { type: "error"; message: string; code?: "session-gone" }
 	| { type: "exit"; exitCode: number; signal: number }
 	| { type: "title"; title: string | null };
 
@@ -220,6 +223,16 @@ type TerminalSocket = {
  * via direnv; same budget as the v1 stack.
  */
 const SHELL_READY_TIMEOUT_MS = 15_000;
+
+/**
+ * Gap between writing the initialCommand text and the Enter (`\r`) that runs
+ * it. The shell-ready marker fires from precmd, before the line editor reads
+ * input — plugin init in that window can flush the PTY input queue, eating a
+ * newline bundled with the command while the text itself survives in the edit
+ * buffer (typed-but-never-run). A separated, delayed Enter lands after that
+ * init storm.
+ */
+const INITIAL_COMMAND_ENTER_DELAY_MS = 500;
 
 /**
  * Shell readiness lifecycle:
@@ -918,19 +931,30 @@ function queueInitialCommand(
 ): void {
 	if (session.initialCommandQueued || session.exited) return;
 	session.initialCommandQueued = true;
+	const commandText = initialCommand.replace(/[\r\n]+$/, "");
 	// Marker-backed shells can run interactive startup hooks that read or flush
 	// PTY input before the first prompt (direnv/devenv is one example). Wait for
 	// that prompt so the command cannot be consumed as startup input. Launches
 	// without a verified marker resolve this promise immediately — that includes
 	// every Windows shell (pwsh/cmd never emit OSC 133;A), so this stays a no-op
 	// gate there. A missing marker resolves it via SHELL_READY_TIMEOUT_MS — the
-	// command must eventually run; only session teardown may cancel it. W19:
-	// append the shell-aware line ending (bare CR for pwsh, not CRLF) so
-	// PSReadLine accepts the line instead of stranding a `>>` prompt.
+	// command must eventually run; only session teardown may cancel it.
 	void session.shellReadyPromise.then(() => {
-		if (!session.exited && session.shellReadyState !== "cancelled") {
-			session.pty.write(appendShellLineEnding(initialCommand, session.shell));
-		}
+		if (session.exited || session.shellReadyState === "cancelled") return;
+		// The OSC 133;A marker fires from precmd, which runs BEFORE the line
+		// editor starts reading input. Plugin init in that gap (vi-mode,
+		// syntax-highlighting) can flush the PTY input queue mid-read, eating a
+		// trailing newline sent in the same write: the command text survives in
+		// the editor's buffer but never executes. Send Enter as its own delayed
+		// write — and as `\r`, what a real Enter key sends, bound to accept-line
+		// in every keymap — so it lands after the init storm. One Enter total,
+		// so a double-run is impossible.
+		session.pty.write(commandText);
+		setTimeout(() => {
+			if (session.exited || session.shellReadyState === "cancelled") return;
+			// W19: a bare CR is the PowerShell/PSReadLine Enter keystroke.
+			session.pty.write("\r");
+		}, INITIAL_COMMAND_ENTER_DELAY_MS);
 	});
 }
 
@@ -1704,7 +1728,7 @@ export function registerWorkspaceTerminalRoute({
 				return true;
 			};
 			const resolveSessionForAttach = async (): Promise<
-				TerminalSession | { error: string }
+				TerminalSession | { error: string; code?: "session-gone" }
 			> => {
 				const existing = sessions.get(terminalId);
 				if (existing) {
@@ -1725,13 +1749,20 @@ export function registerWorkspaceTerminalRoute({
 				if (!record) {
 					return {
 						error: `Terminal session "${terminalId}" not found; create it before connecting.`,
+						code: "session-gone",
 					};
 				}
 				if (record.status === "disposed") {
-					return { error: `Terminal session "${terminalId}" is disposed.` };
+					return {
+						error: `Terminal session "${terminalId}" is disposed.`,
+						code: "session-gone",
+					};
 				}
 				if (record.status === "exited") {
-					return { error: SESSION_ENDED_ERROR };
+					return {
+						error: SESSION_ENDED_ERROR,
+						code: "session-gone",
+					};
 				}
 				if (!record.originWorkspaceId) {
 					return {
@@ -1782,7 +1813,11 @@ export function registerWorkspaceTerminalRoute({
 					void (async () => {
 						const session = await resolveSessionForAttach();
 						if ("error" in session) {
-							sendMessage(ws, { type: "error", message: session.error });
+							sendMessage(ws, {
+								type: "error",
+								message: session.error,
+								code: session.code,
+							});
 							ws.close(1011, session.error);
 							return;
 						}

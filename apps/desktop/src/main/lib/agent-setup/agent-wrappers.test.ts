@@ -1888,6 +1888,7 @@ describe("kimi config.toml", () => {
 });
 
 import {
+	GROK_BLOCKING_NOTIFICATION_TYPES,
 	GROK_COMPAT_MARKER_END,
 	GROK_COMPAT_MARKER_START,
 	getGrokConfigTomlContent,
@@ -1915,15 +1916,30 @@ describe("grok hooks json", () => {
 			"PostToolUseFailure",
 			"Stop",
 			"StopFailure",
+			"Notification",
 		]);
 		expect(events).not.toContain("PreToolUse");
 		for (const definitions of Object.values(parsed.hooks)) {
 			const [definition] = definitions as Array<{
+				matcher?: string;
 				hooks: Array<{ type: string; command: string }>;
 			}>;
 			expect(definition.hooks[0].type).toBe("command");
 			expect(definition.hooks[0].command).toContain("SUPERSET_AGENT_ID=grok");
 		}
+		expect(parsed.hooks.Notification[0].matcher).toBe(
+			`^(${GROK_BLOCKING_NOTIFICATION_TYPES.join("|")})$`,
+		);
+	});
+
+	it("keeps the notify template's subtype filter in sync with the matcher", () => {
+		const template = readFileSync(
+			path.join(import.meta.dir, "templates", "notify-hook.template.sh"),
+			"utf-8",
+		);
+		expect(template).toContain(
+			`${GROK_BLOCKING_NOTIFICATION_TYPES.join("|")}) EVENT_TYPE="PermissionRequest"`,
+		);
 	});
 });
 

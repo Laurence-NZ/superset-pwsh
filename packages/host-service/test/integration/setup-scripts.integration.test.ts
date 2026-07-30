@@ -130,11 +130,16 @@ describe("setup scripts integration", () => {
 			expect(created.terminals).toHaveLength(1);
 			expect(created.terminals[0]?.label).toBe("Workspace Setup");
 
-			const lineEnding = process.platform === "win32" ? "\r\n" : "\n";
+			// The command text and its Enter arrive as separate writes (the Enter is
+			// delayed so shell startup can't eat it) — assert both, in order.
 			await waitFor(
-				() => writes.includes(`echo setup-a && echo setup-b${lineEnding}`),
+				() =>
+					writes.includes("echo setup-a && echo setup-b") &&
+					writes.indexOf("\r") >
+						writes.indexOf("echo setup-a && echo setup-b"),
 				5000,
-				() => `expected setup command write, got ${JSON.stringify(writes)}`,
+				() =>
+					`expected setup command write + Enter, got ${JSON.stringify(writes)}`,
 			);
 
 			const workspaceRow = scenario.host.db

@@ -90,7 +90,11 @@ class TerminalRuntimeRegistryImpl {
 			terminalId,
 			instanceId,
 			runtime: null,
-			transport: createTransport(),
+			// A destroyed PTY (exit / session-gone) has nothing left to restore —
+			// drop the persisted scrollback the moment the server says so.
+			transport: createTransport({
+				onSessionEnded: () => clearPersistedRuntimeState(terminalId),
+			}),
 			linkManager: null,
 			pendingLinkHandlers: null,
 			disposeBufferChangeListener: null,
@@ -294,6 +298,11 @@ class TerminalRuntimeRegistryImpl {
 
 		entry.lastUsedAt = ++this.useSeq;
 		detachFromContainer(entry.runtime);
+		// detachFromContainer persists unconditionally; a dead session's snapshot
+		// must not outlive the PTY.
+		if (entry.transport.sessionEnded) {
+			clearPersistedRuntimeState(terminalId);
+		}
 		this.scheduleParkedEviction();
 	}
 
@@ -340,6 +349,10 @@ class TerminalRuntimeRegistryImpl {
 			(entry) => entry.runtime?.terminal.buffer.active.type === "alternate",
 		);
 		for (const entry of victims) {
+			if (entry.transport.sessionEnded) {
+				this.disposeEntry(entry, { persistedState: "clear" });
+				continue;
+			}
 			if (!entry.runtime || !tryPersistRuntimeState(entry.runtime)) {
 				this.warnPersistFailureOnce(entry.terminalId);
 				continue;
@@ -410,6 +423,10 @@ class TerminalRuntimeRegistryImpl {
 				)
 			: this.getEntries(terminalId);
 		for (const entry of entries) {
+			if (entry.transport.sessionEnded) {
+				this.disposeEntry(entry, { persistedState: "clear" });
+				continue;
+			}
 			if (entry.runtime && !tryPersistRuntimeState(entry.runtime)) {
 				this.warnPersistFailureOnce(entry.terminalId);
 				continue;
