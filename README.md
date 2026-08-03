@@ -26,10 +26,16 @@ is catalogued in [`docs/windows-port-patch-list.md`](docs/windows-port-patch-lis
 
 The desktop app skips auto-registering its Claude Code notify hooks on Windows
 (see W11 in the patch list), so Claude Code session/tool activity won't surface
-as notifications by default. To wire them up, run:
+as notifications by default. To wire them up, run this script:
 
 ```powershell
-pwsh scripts/windows/setup-claude-notify.ps1
+pwsh -c "irm https://raw.githubusercontent.com/Laurence-NZ/superset-pwsh/main/scripts/windows/setup-claude-notify.ps1 | iex"
+```
+
+Alternatively, pull the repo yourself and run manually:
+
+```powershell
+pwsh -ExecutionPolicy Bypass -File scripts/windows/setup-claude-notify.ps1
 ```
 
 This installs `~/.claude/hooks/superset-notify.sh` (bridges Claude Code events

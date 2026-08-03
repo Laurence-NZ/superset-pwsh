@@ -24,7 +24,13 @@
   Print the merged settings.json to stdout and exit without writing anything.
 
 .EXAMPLE
-  pwsh scripts/windows/setup-claude-notify.ps1
+  # From a checkout. -ExecutionPolicy Bypass is scoped to this pwsh process and
+  # avoids the policy/"downloaded from the internet" block on script files.
+  pwsh -ExecutionPolicy Bypass -File scripts/windows/setup-claude-notify.ps1
+
+.EXAMPLE
+  # Without a checkout. Piping through iex isn't subject to execution policy.
+  pwsh -c "irm https://raw.githubusercontent.com/Laurence-NZ/superset-pwsh/main/scripts/windows/setup-claude-notify.ps1 | iex"
 #>
 [CmdletBinding()]
 param(

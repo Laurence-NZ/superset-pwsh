@@ -299,8 +299,22 @@ For **each** patch entry:
   ```
 - **Opt-in re-enable (standalone script):** since the app skips auto-inject on
   win32, users wire the Claude hooks on demand with
-  `scripts/windows/setup-claude-notify.ps1` (`pwsh …`, documented in
-  `README.md`). It's self-contained (no repo imports): writes
+  `scripts/windows/setup-claude-notify.ps1`. **The documented invocation must stay
+  policy-safe:** `README.md` leads with
+  `pwsh -c "irm <raw URL> | iex"` — no file on disk, so neither the execution
+  policy nor mark-of-the-web applies, and it needs no checkout. A downloaded copy
+  run directly (`pwsh script.ps1`) dies with
+  `SecurityError: … is not digitally signed` under `RemoteSigned`; the raw-URL
+  form must therefore stay the headline, with
+  `pwsh -ExecutionPolicy Bypass -File …` noted only for checkouts wanting
+  `-DryRun`. Keep the raw URL pointed at the **fork remote's** branch (`main`),
+  not the local branch name. `scripts/windows/` has no upstream counterpart, so
+  this carries no merge surface — **prefer extending this script over re-enabling
+  the injector.** Two alternatives were considered and declined: an in-app
+  Settings toggle (unguarding line ~270 here is cheap, but the Settings row +
+  tRPC procedure sit in upstream-hot renderer files and would need defending on
+  every merge) and a double-clickable `.cmd` shim (redundant once the one-liner
+  is clean). The script is self-contained (no repo imports): writes
   `~/.claude/hooks/superset-notify.sh` (bridge → `$SUPERSET_HOME_DIR/hooks/notify.sh`,
   needs bash), then merges the hook entries that call it into
   `~/.claude/settings.json`. Idempotent (strips prior `superset-notify.sh`
