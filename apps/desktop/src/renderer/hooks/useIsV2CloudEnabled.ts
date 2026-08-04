@@ -12,8 +12,7 @@ export function useIsV2OnlyUser(): boolean {
 
 /** Returns whether v2 is currently active for this user. */
 export function useIsV2CloudEnabled(): boolean {
-	// ponytail: Windows fork forces v2 on for everyone and hides the opt-out
-	// toggle (see ExperimentalSettings). v1 is untested on Windows. Restore the
-	// opt-in/env logic if v1 support is ever wanted here.
+	// Windows fork: v1 is untested, so v2 stays forced on regardless of the
+	// migration/opt-out state. The settings toggle is locked to match.
 	return true;
 }

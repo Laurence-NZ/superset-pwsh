@@ -24,16 +24,12 @@ import {
 	PROTOCOL_SCHEME,
 } from "shared/constants";
 import { setupAgentHooks } from "./lib/agent-setup";
-import {
-	markAppQuitRequested,
-	resetAppQuitRequested,
-} from "./lib/app-quit-state";
 import { initAppState } from "./lib/app-state";
 import { requestAppleEventsAccess } from "./lib/apple-events-permission";
 import { isUpdateReadyToInstall, setupAutoUpdater } from "./lib/auto-updater";
 import { installBundledCliShim } from "./lib/bundled-cli";
-import { getMainApiUrl } from "./lib/desktop-runtime-flags";
 import { resolveDevWorkspaceName } from "./lib/dev-workspace-name";
+import { getMainApiUrl } from "./lib/desktop-runtime-flags";
 import { setWorkspaceDockIcon } from "./lib/dock-icon";
 import { loadWebviewBrowserExtension } from "./lib/extensions";
 import { getHostServiceCoordinator } from "./lib/host-service-coordinator";
@@ -45,6 +41,7 @@ import {
 } from "./lib/persistence/persistence";
 import { ensureProjectIconsDir, getProjectIconPath } from "./lib/project-icons";
 import { killAllPtyDaemons } from "./lib/pty-daemon-cleanup";
+import { runQuitCleanup } from "./lib/quit-sequence";
 import { initSentry } from "./lib/sentry";
 import {
 	prewarmTerminalRuntime,
@@ -85,18 +82,32 @@ if (process.defaultApp) {
 }
 
 async function processDeepLink(url: string): Promise<void> {
-	console.log("[main] Processing deep link:", url);
-
-	const authParams = parseAuthDeepLink(url);
-	if (authParams) {
-		const result = await handleAuthCallback(authParams);
+	const authLink = parseAuthDeepLink(url);
+	if (authLink.type !== "not-auth") {
+		// Never log the auth URL: it contains the desktop session token.
+		console.log("[main] Processing auth deep link");
+		const result =
+			authLink.type === "valid"
+				? await handleAuthCallback(authLink.params)
+				: {
+						success: false as const,
+						error: "The sign-in link was incomplete. Please try again.",
+					};
 		if (result.success) {
 			focusMainWindow();
 		} else {
 			console.error("[main] Auth deep link failed:", result.error);
+			focusMainWindow();
+			dialog.showErrorBox(
+				"Sign-in failed",
+				result.error ??
+					"Superset could not complete sign-in. Please try again.",
+			);
 		}
 		return;
 	}
+
+	console.log("[main] Processing deep link:", url);
 
 	// Non-auth deep links: extract path and navigate in renderer
 	// e.g. superset://tasks/my-slug -> /tasks/my-slug
@@ -178,7 +189,6 @@ export function setSkipQuitConfirmation(): void {
 }
 
 export function quitApp(): void {
-	markAppQuitRequested();
 	setSkipQuitConfirmation();
 	app.quit();
 }
@@ -186,7 +196,6 @@ export function quitApp(): void {
 /** Quit + also stop background services. Tray "Quit Completely". */
 export function quitAppCompletely(): void {
 	forceFullCleanup = true;
-	markAppQuitRequested();
 	setSkipQuitConfirmation();
 	app.quit();
 }
@@ -208,16 +217,10 @@ function getConfirmOnQuitSetting(): boolean {
 app.on("before-quit", async (event) => {
 	if (isQuitting) return;
 
-	// The cleanup below is async (terminal-host shutdown, pty-daemon reap,
-	// network logger). Electron quits the instant this handler suspends at its
-	// first await unless we cancel the default quit here — so always
-	// preventDefault and let the explicit app.exit(0) (or the cancel-path
-	// return) drive the actual exit. Skipping this on the Quit-Completely path
-	// killed the main process before killAllPtyDaemons could reap the daemon.
-	event.preventDefault();
-
 	const isDev = process.env.NODE_ENV === "development";
 	if (!skipQuitConfirmation && !isDev && getConfirmOnQuitSetting()) {
+		event.preventDefault();
+
 		try {
 			const { response } = await dialog.showMessageBox({
 				type: "question",
@@ -229,7 +232,6 @@ app.on("before-quit", async (event) => {
 			});
 
 			if (response === 1) {
-				resetAppQuitRequested();
 				return;
 			}
 		} catch (error) {
@@ -237,24 +239,22 @@ app.on("before-quit", async (event) => {
 		}
 	}
 
-	markAppQuitRequested();
 	isQuitting = true;
-	try {
-		getHostServiceCoordinator().stopAll();
-		if (isDev || forceFullCleanup) {
+	await runQuitCleanup({
+		isDev,
+		forceFullCleanup,
+		isUpdateInstalling: isUpdateReadyToInstall(),
+		stopHostServices: () => getHostServiceCoordinator().stopAll(),
+		teardownTerminalHost: async () => {
 			await teardownTerminalHost();
 			await killAllPtyDaemons();
-		} else if (isUpdateReadyToInstall()) {
-			disposeTerminalHostClient();
-		}
-		shutdownTanstackDbPersistence();
-		disposeTray();
-	} catch (error) {
-		console.error("[main] Cleanup during quit failed:", error);
-	} finally {
-		await stopNetworkLogger();
-	}
-	app.exit(0);
+		},
+		disposeTerminalHostClient,
+		shutdownPersistence: shutdownTanstackDbPersistence,
+		disposeTray,
+		stopNetworkLogger,
+		forceExit: (code) => app.exit(code),
+	});
 });
 
 /**
@@ -423,23 +423,52 @@ if (!gotTheLock) {
 		await reconcileDaemonSessions();
 		prewarmTerminalRuntime();
 
-		// Host services for previously-hosted orgs start from main, so
-		// background reachability and port detection never wait on a renderer
-		// or cloud sync. Non-blocking: boot must not wait on spawns.
-		const startKnownHostServices = async () => {
+		const hostServiceCoordinator = getHostServiceCoordinator();
+		hostServiceCoordinator.setConfigProvider(async () => {
+			const { token } = await loadToken();
+			if (!token) return null;
+			return { authToken: token, cloudApiUrl: getMainApiUrl() };
+		});
+
+		// The authenticated session's cached membership is the source of truth.
+		// Host data on disk can outlive membership and must never resurrect an
+		// obsolete service. This cache keeps subsequent launches offline-capable.
+		let authGeneration = 0;
+		const reconcileHostServices = async (providedAuth?: {
+			token: string;
+			organizationIds: string[];
+		}) => {
+			const generation = authGeneration;
 			try {
-				const { token } = await loadToken();
-				if (!token) return;
-				await getHostServiceCoordinator().startAllKnown({
-					authToken: token,
+				const storedAuth = providedAuth ?? (await loadToken());
+				if (generation !== authGeneration) return;
+				if (!storedAuth.token || !storedAuth.organizationIds) return;
+				await hostServiceCoordinator.reconcile(storedAuth.organizationIds, {
+					authToken: storedAuth.token,
 					cloudApiUrl: getMainApiUrl(),
 				});
 			} catch (error) {
-				console.error("[main] host-service boot reconcile failed:", error);
+				console.error("[main] host-service reconcile failed:", error);
 			}
 		};
-		void startKnownHostServices();
-		authEvents.on("token-saved", () => void startKnownHostServices());
+		void reconcileHostServices();
+		// A new token can belong to a different account. Stop immediately and wait
+		// for that account's session membership before starting anything.
+		authEvents.on("token-saved", () => {
+			authGeneration++;
+			hostServiceCoordinator.stopAll();
+		});
+		authEvents.on("token-cleared", () => {
+			authGeneration++;
+			hostServiceCoordinator.stopAll();
+		});
+		authEvents.on(
+			"organization-ids-saved",
+			(data: { token: string; organizationIds: string[] }) => {
+				authGeneration++;
+				void reconcileHostServices(data);
+			},
+		);
 
 		try {
 			setupAgentHooks();
@@ -452,18 +481,12 @@ if (!gotTheLock) {
 			console.error("[main] Failed to install bundled CLI shim:", error);
 		}
 
-		// Read the token at call time rather than capturing it: an automatic
-		// respawn can happen hours after the original spawn, by which point the
-		// token that spawned the child may have rotated.
-		const hostServiceConfigProvider = async () => {
-			const { token } = await loadToken();
-			if (!token) return null;
-			return { authToken: token, cloudApiUrl: getMainApiUrl() };
-		};
-		getHostServiceCoordinator().setConfigProvider(hostServiceConfigProvider);
-
 		if (IS_DEV) {
-			getHostServiceCoordinator().enableDevReload(hostServiceConfigProvider);
+			hostServiceCoordinator.enableDevReload(async () => {
+				const { token } = await loadToken();
+				if (!token) return null;
+				return { authToken: token, cloudApiUrl: getMainApiUrl() };
+			});
 		}
 
 		await makeAppSetup(() => MainWindow());
