@@ -1137,16 +1137,20 @@ notify the user and switch to theirs.
 
 ## F9 — Stream-mode desktop development diagnostics
 
-- **Commits:** `64ab90918`
+- **Commits:** `64ab90918`; `163ce2925` (use Node 22 for Windows installs and
+  repair incomplete Electron packages with Bun)
 - **Override policy:** **OVERRIDABLE.** If upstream documents an equivalent
   cross-platform diagnostic workflow, prefer its guidance.
 - **Invariant:** Automated desktop diagnostics use Turbo stream mode so all task
   output is visible. After a timed-out run, agents check for and stop its
   surviving Bun/Turbo process tree before retrying, because Windows children can
-  retain the development ports.
+  retain the development ports. Windows dependency installs use Node 22; an
+  `Error: Electron uninstall` failure is treated as an incomplete Electron
+  postinstall and repaired before retrying.
 - **Where:** `AGENTS.md` (Windows port guidance).
 - **Scan for:** removal of the `dev:desktop --ui=stream` command or the
-  post-timeout process-tree cleanup warning.
+  post-timeout process-tree cleanup warning; Windows installs running under Node
+  24; an Electron package missing `path.txt` or `dist/electron.exe`.
 
 ## F10 — Bound and diagnose large `gh` open-PR sweep responses
 
@@ -1288,3 +1292,18 @@ notify the user and switch to theirs.
   regress to hidden-when-left-sidebar-expanded).
 - **Symptom if broken:** the Open-in button only appears in the right sidebar
   again, or shows twice in the tab bar (accidental double-add).
+
+## F15 — Keep v2 tab-bar actions compact
+
+- **Commits:** `a7e71fd4a`
+- **Override policy:** **OVERRIDABLE.** Adopt upstream spacing if it keeps the
+  complete trailing action cluster visible at narrow desktop widths.
+- **Invariant:** The v2 Run button shows only its icon and action label; the
+  registered hotkey remains functional but is not repeated in the button. The
+  tab-bar Open-in branch label is capped at 6rem while the sidebar variant keeps
+  its 140px cap.
+- **Where:** `V2WorkspaceRunButton.tsx`; `V2OpenInMenuButton.tsx`.
+- **Scan for:** `useHotkeyDisplay("RUN_WORKSPACE_COMMAND")` returning to the v2
+  Run button; the tab-bar branch label sharing the sidebar's 140px maximum.
+- **Symptom if broken:** the Run shortcut or a long branch name crowds the v2
+  pane tab bar and pushes trailing actions toward the window controls.
