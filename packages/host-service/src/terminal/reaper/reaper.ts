@@ -1,5 +1,6 @@
+import { and, eq, inArray } from "drizzle-orm";
 import type { HostDb } from "../../db/index.ts";
-import { terminalSessions } from "../../db/schema.ts";
+import { terminalAgentBindings, terminalSessions } from "../../db/schema.ts";
 import { portManager } from "../../ports/port-manager.ts";
 import { getDaemonClient } from "../daemon-client-singleton.ts";
 import { disposeSessionAndWait, isLiveTerminalSession } from "../terminal.ts";
@@ -10,6 +11,13 @@ interface ReapResult {
 }
 
 export const REAP_INTERVAL_MS = 5 * 60 * 1000;
+
+/**
+ * Confirm a missing Windows session against a second daemon snapshot. A
+ * host-service restart adopts the still-running daemon asynchronously, so one
+ * early empty list is not enough evidence that the PTY died with the app.
+ */
+export const WINDOWS_STALE_SESSION_CONFIRM_DELAY_MS = 2_000;
 
 /**
  * A host-service restart begins with an empty port scanner while the detached
@@ -29,6 +37,41 @@ interface TerminalRow {
 	status: string;
 	originWorkspaceId: string | null;
 	disposeRequestedAt?: number | null;
+}
+
+export interface WindowsStaleSessionReconciliationPlan {
+	exit: string[];
+	pending: string[];
+}
+
+/**
+ * Preserve every active row the daemon still reports. A missing row must be
+ * absent from two consecutive startup observations before it is marked exited.
+ */
+export function planWindowsStaleSessionReconciliation({
+	activeTerminalIds,
+	liveTerminalIds,
+	pendingTerminalIds,
+}: {
+	activeTerminalIds: readonly string[];
+	liveTerminalIds: readonly string[];
+	pendingTerminalIds: readonly string[];
+}): WindowsStaleSessionReconciliationPlan {
+	const live = new Set(liveTerminalIds);
+	const previouslyMissing = new Set(pendingTerminalIds);
+	const exit: string[] = [];
+	const pending: string[] = [];
+
+	for (const terminalId of activeTerminalIds) {
+		if (live.has(terminalId)) continue;
+		if (previouslyMissing.has(terminalId)) {
+			exit.push(terminalId);
+		} else {
+			pending.push(terminalId);
+		}
+	}
+
+	return { exit, pending };
 }
 
 /**
@@ -152,10 +195,7 @@ function applyPortScanSync(
 async function runPortScanSync(db: HostDb) {
 	const daemon = await getDaemonClient();
 	const liveSessions = (await daemon.list()).filter((session) => session.alive);
-	const rowById =
-		liveSessions.length > 0
-			? loadTerminalRowsById(db)
-			: new Map<string, TerminalRow>();
+	const rowById = loadTerminalRowsById(db);
 	applyPortScanSync(liveSessions, rowById);
 	return { liveSessions, rowById };
 }
@@ -180,6 +220,86 @@ function syncPortScans(db: HostDb): ReturnType<typeof runPortScanSync> {
 		inFlightPortScanSync = null;
 	});
 	return inFlightPortScanSync;
+}
+
+function getActiveTerminalIds(rowById: Map<string, TerminalRow>): string[] {
+	const activeTerminalIds: string[] = [];
+	for (const [terminalId, row] of rowById) {
+		if (row.status === "active") activeTerminalIds.push(terminalId);
+	}
+	return activeTerminalIds;
+}
+
+function markStaleWindowsSessionsExited(
+	db: HostDb,
+	terminalIds: readonly string[],
+): void {
+	if (terminalIds.length === 0) return;
+	const endedAt = Date.now();
+
+	db.transaction((tx) => {
+		tx.update(terminalSessions)
+			.set({ status: "exited", endedAt })
+			.where(
+				and(
+					eq(terminalSessions.status, "active"),
+					inArray(terminalSessions.id, terminalIds),
+				),
+			)
+			.run();
+		tx.delete(terminalAgentBindings)
+			.where(inArray(terminalAgentBindings.terminalId, terminalIds))
+			.run();
+	});
+}
+
+/**
+ * The Windows app cannot keep PTYs alive after Electron exits, but the daemon
+ * does survive a host-service-only crash. Reconcile after daemon adoption, not
+ * during createApp(), so a recoverable host restart keeps its live terminals.
+ *
+ * Entry points await this before listening. Usually it returns after one daemon
+ * snapshot; only rows missing from that snapshot incur the confirmation delay.
+ */
+export async function reconcileStaleWindowsTerminalSessions(
+	db: HostDb,
+): Promise<number> {
+	if (process.platform !== "win32") return 0;
+	if (getActiveTerminalIds(loadTerminalRowsById(db)).length === 0) return 0;
+
+	try {
+		const { liveSessions, rowById } = await syncPortScans(db);
+		const firstPlan = planWindowsStaleSessionReconciliation({
+			activeTerminalIds: getActiveTerminalIds(rowById),
+			liveTerminalIds: liveSessions.map((session) => session.id),
+			pendingTerminalIds: [],
+		});
+		if (firstPlan.pending.length === 0) return 0;
+
+		await new Promise((resolve) =>
+			setTimeout(resolve, WINDOWS_STALE_SESSION_CONFIRM_DELAY_MS),
+		);
+		const { liveSessions: confirmedLiveSessions, rowById: confirmedRows } =
+			await syncPortScans(db);
+		const confirmedPlan = planWindowsStaleSessionReconciliation({
+			activeTerminalIds: getActiveTerminalIds(confirmedRows),
+			liveTerminalIds: confirmedLiveSessions.map((session) => session.id),
+			pendingTerminalIds: firstPlan.pending,
+		});
+		markStaleWindowsSessionsExited(db, confirmedPlan.exit);
+		if (confirmedPlan.exit.length > 0) {
+			console.log(
+				`[host-service] windows terminal reconciliation: ${confirmedPlan.exit.length} stale active session(s) marked exited`,
+			);
+		}
+		return confirmedPlan.exit.length;
+	} catch (error) {
+		console.warn(
+			"[host-service] windows terminal reconciliation failed:",
+			error,
+		);
+		return 0;
+	}
 }
 
 async function reapOrphanedSessions(

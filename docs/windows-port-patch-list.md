@@ -336,7 +336,8 @@ For **each** patch entry:
   CREATE_NEW_PROCESS_GROUP` but **not** `CREATE_BREAKAWAY_FROM_JOB`, so the
   daemon stays in Electron's Windows Job Object and dies on job close. So after
   any Windows app restart the session is gone (a reboot loses it on every
-  platform too).
+  platform too). A host-service-only crash is different: Electron and its Job
+  Object remain alive, so the daemon and PTYs survive and must be adopted (W16).
 - **Invariant:** When the live PTY can't be adopted, `resolveSessionForAttach`
   returns a `SESSION_ENDED` sentinel rather than respawning a shell over the
   renderer's painted scrollback. The transport maps that to a `session_ended`
@@ -457,24 +458,32 @@ For **each** patch entry:
   `WatchmanBackend.cc` was the only dep matching
   `--output-encoding=bser get-sockname`.
 
-## W16 — Sweep stale `active` terminal sessions on win32 startup
+## W16 — Reconcile win32 terminal sessions against the adopted daemon
 
 - **Commits:** `95467bee9`
 - **Override policy:** **LOCKED** (win32 daemon lifecycle).
-- **Why:** the pty-daemon is spawned `detached` + `unref()` and doesn't die with
-  the app, so a terminal's `onExit` (which flips its `terminal_sessions` row to
-  `exited`) isn't delivered to the exiting host-service, and the reaper only
-  visits sessions the daemon still lists. Dead rows keep their agent binding
-  live-joined.
-- **Invariant:** host-service startup sweeps all `active` rows → `exited` on
-  win32, before `deleteDefunct()`. Safe because no pty survives an app restart
-  on Windows.
-- **Where:** `packages/host-service/src/app.ts` (before `deleteDefunct()`).
-- **Scan for:** changes to startup session-cleanup ordering, or removal of the
-  win32 sweep.
-- **Symptom if broken:** a phantom duplicate "Claude" chip per relaunch in the
-  workspace-agents sidebar (chips render only when ≥2 agents, so it looks like
-  "two Claude icons for one instance"); sessions from days ago still `active`.
+- **Why:** a full Electron exit kills the daemon through the Windows Job Object,
+  leaving terminal rows `active` because their PTY exit could not reach the old
+  host-service. A host-service-only crash does **not** kill the daemon: the
+  replacement host can adopt its live PTYs. The old unconditional startup sweep
+  conflated those cases, marked recoverable sessions `exited`, and let the
+  reaper dispose them immediately after adoption.
+- **Invariant:** after daemon adoption, preserve every `active` row the daemon
+  reports alive. Only mark a row `exited` (and delete its agent binding) when it
+  is absent from two startup daemon snapshots separated by a short confirmation
+  delay. `createApp()` must never blanket-transition all win32 active rows.
+- **Where:** `packages/host-service/src/terminal/reaper/reaper.ts`
+  (`planWindowsStaleSessionReconciliation`,
+  `reconcileStaleWindowsTerminalSessions`), awaited by both host-service entry
+  points before they listen; `packages/host-service/src/app.ts`
+  must remain free of the old unconditional sweep.
+- **Scan for:** any win32 startup cleanup that changes all `active` rows without
+  consulting `daemon.list()`, removes the second observation, or lets the reaper
+  dispose a daemon-owned active session.
+- **Symptom if broken:** after a host-service crash, live terminal tabs turn red
+  **Disconnected** and log `Terminal session "…" is disposed`; after a full app
+  restart, stale agents instead remain `active` and appear as duplicate Claude
+  chips.
 
 ## W17 — "Quit Completely" tree-kills the pty-daemon
 

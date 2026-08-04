@@ -20,7 +20,10 @@ export {
 } from "./providers/model-providers";
 export type { GitCredentialProvider, GitFactory } from "./runtime/git";
 export { installProcessSafetyNet, startProcessDiagnostics } from "./safety";
-export { startTerminalReaper } from "./terminal/reaper";
+export {
+	reconcileStaleWindowsTerminalSessions,
+	startTerminalReaper,
+} from "./terminal/reaper";
 export type {
 	DeleteInProgressCause,
 	TeardownFailureCause,

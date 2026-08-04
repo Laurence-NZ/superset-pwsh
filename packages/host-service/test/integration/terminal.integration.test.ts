@@ -25,7 +25,10 @@ import {
 	initTerminalBaseEnv,
 	resetTerminalBaseEnvForTests,
 } from "../../src/terminal/env";
-import { startTerminalReaper } from "../../src/terminal/reaper";
+import {
+	reconcileStaleWindowsTerminalSessions,
+	startTerminalReaper,
+} from "../../src/terminal/reaper";
 import { listTerminalResourceSessions } from "../../src/terminal/resource-sessions";
 import {
 	__resetSessionsForTesting,
@@ -471,6 +474,7 @@ describe("terminal router integration", () => {
 				.where(eq(terminalSessions.id, stampedId))
 				.run();
 			__resetSessionsForTesting();
+			await reconcileStaleWindowsTerminalSessions(scenario.host.db);
 
 			// First reap pass runs immediately on start.
 			stopReaper = startTerminalReaper(scenario.host.db);
@@ -480,6 +484,10 @@ describe("terminal router integration", () => {
 				"stamped session reaped",
 			);
 			expect((await aliveIds()).has(sparedId)).toBe(true);
+			const sparedRow = scenario.host.db.query.terminalSessions
+				.findFirst({ where: eq(terminalSessions.id, sparedId) })
+				.sync();
+			expect(sparedRow?.status).toBe("active");
 		} finally {
 			stopReaper?.();
 			await scenario.host.trpc.terminal.killSession

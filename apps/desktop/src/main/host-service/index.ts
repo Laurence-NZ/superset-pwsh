@@ -13,6 +13,7 @@ import {
 	LocalGitCredentialProvider,
 	LocalModelProvider,
 	PskHostAuthProvider,
+	reconcileStaleWindowsTerminalSessions,
 	startProcessDiagnostics,
 	startTerminalReaper,
 } from "@superset/host-service";
@@ -107,6 +108,7 @@ async function main(): Promise<void> {
 			modelResolver: new LocalModelProvider(),
 		},
 	});
+	await reconcileStaleWindowsTerminalSessions(db);
 
 	const startedAt = Date.now();
 	const server = serve(

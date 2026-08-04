@@ -2,8 +2,10 @@ import { describe, expect, it } from "bun:test";
 import {
 	PORT_SCAN_WARMUP_DELAYS_MS,
 	planPortScanSync,
+	planWindowsStaleSessionReconciliation,
 	REAP_INTERVAL_MS,
 	shouldReapRow,
+	WINDOWS_STALE_SESSION_CONFIRM_DELAY_MS,
 } from "./reaper.ts";
 
 const noneLive = () => false;
@@ -27,6 +29,47 @@ describe("port-scan warm-up schedule", () => {
 		for (const delay of PORT_SCAN_WARMUP_DELAYS_MS) {
 			expect(delay).toBeLessThan(REAP_INTERVAL_MS);
 		}
+	});
+});
+
+describe("Windows stale-session reconciliation", () => {
+	it("requires two missing observations before ending an active session", () => {
+		const first = planWindowsStaleSessionReconciliation({
+			activeTerminalIds: ["missing"],
+			liveTerminalIds: [],
+			pendingTerminalIds: [],
+		});
+
+		expect(first).toEqual({ exit: [], pending: ["missing"] });
+		expect(WINDOWS_STALE_SESSION_CONFIRM_DELAY_MS).toBeGreaterThan(0);
+
+		const confirmed = planWindowsStaleSessionReconciliation({
+			activeTerminalIds: ["missing"],
+			liveTerminalIds: [],
+			pendingTerminalIds: first.pending,
+		});
+
+		expect(confirmed).toEqual({ exit: ["missing"], pending: [] });
+	});
+
+	it("preserves sessions reported by an adopted daemon", () => {
+		const plan = planWindowsStaleSessionReconciliation({
+			activeTerminalIds: ["live", "missing"],
+			liveTerminalIds: ["live"],
+			pendingTerminalIds: ["live", "missing"],
+		});
+
+		expect(plan).toEqual({ exit: ["missing"], pending: [] });
+	});
+
+	it("clears a transiently missing session when it appears on confirmation", () => {
+		const plan = planWindowsStaleSessionReconciliation({
+			activeTerminalIds: ["live"],
+			liveTerminalIds: ["live"],
+			pendingTerminalIds: ["live"],
+		});
+
+		expect(plan).toEqual({ exit: [], pending: [] });
 	});
 });
 

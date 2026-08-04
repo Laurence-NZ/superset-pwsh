@@ -11,7 +11,10 @@ import { PskHostAuthProvider } from "./providers/host-auth";
 import { LocalModelProvider } from "./providers/model-providers";
 import { installProcessSafetyNet, startProcessDiagnostics } from "./safety";
 import { startTerminalBaseEnvResolution } from "./terminal/env";
-import { startTerminalReaper } from "./terminal/reaper";
+import {
+	reconcileStaleWindowsTerminalSessions,
+	startTerminalReaper,
+} from "./terminal/reaper";
 import { connectRelay } from "./tunnel";
 
 async function main(): Promise<void> {
@@ -64,6 +67,7 @@ async function main(): Promise<void> {
 			modelResolver: new LocalModelProvider(),
 		},
 	});
+	await reconcileStaleWindowsTerminalSessions(db);
 
 	// Dev-mode shutdown: kill the daemon on host-service exit so dev
 	// iteration on daemon code resets cleanly. Production keeps the

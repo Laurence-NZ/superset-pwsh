@@ -8,7 +8,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { createApiClient } from "./api";
 import { createDb, type HostDb } from "./db";
-import { terminalSessions, workspaces } from "./db/schema";
+import { workspaces } from "./db/schema";
 import { EventBus, GitWatcher, registerEventBusRoute } from "./events";
 import type { ApiAuthProvider } from "./providers/auth";
 import type { HostAuthProvider } from "./providers/host-auth";
@@ -180,28 +180,6 @@ export function createApp(options: CreateAppOptions): CreateAppResult {
 	const terminalAgentPersistence = new SqliteTerminalAgentBindingPersistence(
 		db,
 	);
-	// Windows can't keep the detached pty-daemon alive past an app restart, so
-	// every session still marked `active` at startup is a dead terminal whose
-	// pty exit (which would have flipped it to `exited`) was never delivered.
-	// The daemon list can't heal these — the reaper only visits sessions the
-	// daemon still reports. Left as-is they live-join to their persisted agent
-	// binding and surface as phantom "running agent" chips that stack one per
-	// launch. Mark them exited so the deleteDefunct sweep below prunes their
-	// bindings. Matches the on-attach tombstone in terminal.ts, which already
-	// treats a daemon-unowned active row as ended on Windows.
-	if (process.platform === "win32") {
-		try {
-			db.update(terminalSessions)
-				.set({ status: "exited", endedAt: Date.now() })
-				.where(eq(terminalSessions.status, "active"))
-				.run();
-		} catch (error) {
-			console.warn(
-				"[host-service] failed to reconcile stale active terminal sessions",
-				error,
-			);
-		}
-	}
 	// Hygiene only — reads hide defunct bindings via the session-liveness
 	// join regardless, so a failure here must not block startup.
 	try {
