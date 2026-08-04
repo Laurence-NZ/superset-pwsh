@@ -20,6 +20,7 @@ export {
 } from "./providers/model-providers";
 export type { GitCredentialProvider, GitFactory } from "./runtime/git";
 export { installProcessSafetyNet, startProcessDiagnostics } from "./safety";
+export { captureFatalStartupError, initSentry } from "./sentry";
 export {
 	reconcileStaleWindowsTerminalSessions,
 	startTerminalReaper,

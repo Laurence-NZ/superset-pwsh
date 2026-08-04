@@ -6,6 +6,7 @@ import { useHostProjects } from "renderer/hooks/host-projects/useHostProjects";
 import { useHostUrl } from "renderer/hooks/host-service/useHostTargetUrl";
 import { getOpenInFileManagerLabel } from "renderer/lib/file-manager-labels";
 import { getHostServiceClientByUrl } from "renderer/lib/host-service-client";
+import { electronTrpcClient } from "renderer/lib/trpc-client";
 import { useDashboardSidebarSectionRename } from "renderer/routes/_authenticated/_dashboard/components/DashboardSidebar/components/DashboardSidebarSectionRenameContext";
 import { useDashboardSidebarState } from "renderer/routes/_authenticated/hooks/useDashboardSidebarState";
 import { useLocalHostService } from "renderer/routes/_authenticated/providers/LocalHostServiceProvider";
@@ -76,8 +77,25 @@ export function useDashboardSidebarProjectSectionActions({
 			});
 	};
 
-	const handleOpenInFinder = () => {
-		toast.info(`${getOpenInFileManagerLabel()} is coming soon`);
+	const handleOpenInFinder = async () => {
+		const hostProject = hostProjects.find(
+			(item) => item.projectKey === project.id,
+		);
+		const localRepoPath =
+			machineId && hostProject?.hostIds.includes(machineId)
+				? hostProject.repoPath
+				: undefined;
+		if (!localRepoPath) {
+			toast.error("Project folder is not on this machine");
+			return;
+		}
+		try {
+			await electronTrpcClient.external.openInFinder.mutate(localRepoPath);
+		} catch (error) {
+			toast.error(
+				`Failed to open in ${getOpenInFileManagerLabel()}: ${error instanceof Error ? error.message : "Unknown error"}`,
+			);
+		}
 	};
 
 	const handleOpenSettings = () => {
