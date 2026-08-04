@@ -81,6 +81,23 @@ async function main(): Promise<void> {
 			payloadAsString(m).includes("abc-marker"),
 		5_000,
 	);
+	interactive.send({ type: "list" });
+	const list = await interactive.waitFor((m) => m.type === "list-reply", 5_000);
+	if (list.type !== "list-reply") {
+		throw new Error("expected list-reply after interactive PTY became ready");
+	}
+	const listedSession = list.sessions.find(
+		(session) => session.id === "interactive",
+	);
+	if (
+		!listedSession ||
+		!Number.isInteger(listedSession.pid) ||
+		listedSession.pid <= 0
+	) {
+		throw new Error(
+			`expected a positive live session PID, got ${listedSession?.pid ?? "missing"}`,
+		);
+	}
 	interactive.send({ type: "resize", id: "interactive", cols: 100, rows: 30 });
 	interactive.send({ type: "close", id: "interactive", signal: "SIGKILL" });
 	await interactive.waitFor(

@@ -90,6 +90,17 @@ test(
 				payloadAsString(m).includes("abc-marker"),
 			3000,
 		);
+		c.send({ type: "list" });
+		const list = await c.waitFor((m) => m.type === "list-reply", 3000);
+		assert.equal(list.type, "list-reply");
+		if (list.type === "list-reply") {
+			const session = list.sessions.find((entry) => entry.id === "smoke-1");
+			assert.ok(session, "live session should be listed");
+			assert.ok(
+				Number.isInteger(session.pid) && session.pid > 0,
+				`expected a positive live session PID, got ${session.pid}`,
+			);
+		}
 		c.send({
 			type: "close",
 			id: "smoke-1",

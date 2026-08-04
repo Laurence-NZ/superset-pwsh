@@ -238,7 +238,6 @@ export interface SpawnOptions {
 }
 
 class NodePtyAdapter implements Pty {
-	readonly pid: number;
 	meta: SessionMeta;
 	private term: nodePty.IPty;
 	private exited = false;
@@ -251,7 +250,6 @@ class NodePtyAdapter implements Pty {
 
 	constructor(term: nodePty.IPty, meta: SessionMeta) {
 		this.term = term;
-		this.pid = term.pid;
 		this.meta = meta;
 		this.killer = new TreeKiller(
 			this.pid,
@@ -279,6 +277,13 @@ class NodePtyAdapter implements Pty {
 			this.dispose();
 			for (const cb of this.exitCallbacks) cb(this.exitInfo);
 		});
+	}
+
+	get pid(): number {
+		// Windows node-pty starts at 0 and fills in the ConPTY child PID after
+		// ready_datapipe. Read it live so later daemon list calls see the real
+		// process instead of preserving the constructor-time placeholder.
+		return this.term.pid;
 	}
 
 	dispose(_options?: DisposeOptions): void {

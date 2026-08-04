@@ -917,6 +917,38 @@ For **each** patch entry:
 
 ---
 
+## W31 — Read the ConPTY child PID after asynchronous startup
+
+- **Commits:** _Pending commit._
+- **Override policy:** **LOCKED** (win32 node-pty lifecycle).
+- **Why:** `node-pty` initializes `WindowsTerminal.pid` to `0`, then replaces it
+  with the ConPTY child PID after `ready_datapipe`. Copying `term.pid` into the
+  daemon adapter during construction permanently preserved `0`. The resource
+  monitor rejects non-positive PIDs, so its v2 endpoint returned no sessions
+  and the command-palette monitor showed **No matching workspaces** even while
+  terminals were running.
+- **Invariant:** `NodePtyAdapter.pid` reads the current `term.pid`; it must not
+  cache the constructor-time value. After a terminal produces output,
+  `daemon.list()` must report a positive integer PID so Windows process-tree
+  resource attribution can include the session.
+- **Where:** `packages/pty-daemon/src/Pty/Pty.ts` (`NodePtyAdapter.pid`);
+  `packages/pty-daemon/test/integration.test.ts` and `test/smoke-win32.ts`
+  (live session list assertions).
+- **Scan for:** `this.pid = term.pid` or another constructor-time PID snapshot;
+  changes to node-pty startup/readiness or the daemon session-list protocol;
+  resource-session filtering that accepts a session without a usable process
+  root.
+- **Verify (Windows):** open two v2 terminals, then open **Check resources** from
+  the command palette. Both workspaces/sessions appear with CPU and memory
+  values instead of an empty list. Automated: run `bun run smoke:win32` from
+  `packages/pty-daemon`; the generic Node integration file still contains
+  POSIX-only cases and is not the Windows smoke entry point.
+- **Symptom if broken:** **Check resources** shows aggregate Superset usage but
+  **No matching workspaces**; `/terminal/resource-sessions` returns an empty
+  array while the daemon lists live sessions with `pid: 0`.
+
+---
+
 # §2 — Features & fixes
 
 Bug fixes and new functionality this branch carries that are **not** part of the
