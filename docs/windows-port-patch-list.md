@@ -90,7 +90,10 @@ For **each** patch entry:
   `072f1f813` (2026-08-04 merge: upstream #6073 replaced the v2 sidebar
   project's file-manager placeholder with a real action. Kept its failure
   message routed through `getOpenInFileManagerLabel()` so Windows says
-  Explorer, not Finder.)
+  Explorer, not Finder.);
+  `2b68b7c77` (2026-08-04 merge: upstream replaced the auth recovery and
+  host-service membership lifecycle. Kept renderer URLs on
+  `getRuntimeApiUrl()` and coordinator/startup URLs on `getMainApiUrl()`.)
 - **Override policy:** **LOCKED.** Upstream targets macOS/Linux; there is no
   upstream Windows port to defer to. Later, finer-grained W-entries refine and
   extend this base; verify them individually as they are migrated in.
@@ -248,7 +251,8 @@ For **each** patch entry:
 
 ## W10 — `windowsHide: true` on spawned console subprocesses
 
-- **Commits:** `5a5a45d4e`
+- **Commits:** `5a5a45d4e`; `6dc3a5725` (2026-08-04 merge follow-up: added
+  `windowsHide` to upstream's new `gh api user` identity lookup.)
 - **Override policy:** **LOCKED** (Windows console-flash suppression).
 - **Invariant:** Every `child_process` spawn of a console-subsystem binary from
   a console-less parent (Electron main / host-service) passes
@@ -257,7 +261,8 @@ For **each** patch entry:
   with every merge.
 - **Where (fixed so far):** `packages/host-service/src/ports/tree-kill.ts`
   (`taskkill.exe`); `apps/desktop/src/main/lib/tree-kill.ts` (`taskkill.exe`);
-  `apps/desktop/src/main/lib/agent-setup/utils.ts` (`where.exe`, `findRealBinary`).
+  `apps/desktop/src/main/lib/agent-setup/utils.ts` (`where.exe`,
+  `findRealBinary`); `packages/host-service/src/runtime/git/identity.ts` (`gh`).
 - **Scan for:** `child_process\.(spawn|exec|execFile)` and `spawnSync`/`execSync`
   in `apps/desktop` + `packages/host-service` without a `windowsHide: true`
   option, especially calls to `taskkill`, `where`, `cmd`, `powershell`, `pwsh`.
@@ -492,7 +497,9 @@ For **each** patch entry:
 
 ## W17 — "Quit Completely" tree-kills the pty-daemon
 
-- **Commits:** `a87b09083`
+- **Commits:** `a87b09083`; `2b68b7c77` (2026-08-04 merge: upstream centralized
+  quit cleanup in `runQuitCleanup`; retained the daemon reap in its full-cleanup
+  terminal teardown callback.)
 - **Override policy:** **LOCKED.** Not Windows-specific in principle (a POSIX
   detached daemon orphans the same way) but gated behind the full-teardown
   branch cross-platform; upstream leaves the daemon alive for reattach.
@@ -506,8 +513,9 @@ For **each** patch entry:
   the tree. Only fires on full teardown (Quit Completely / dev); a plain "Close
   Superset" deliberately leaves the daemon alive.
 - **Where:** `apps/desktop/src/main/lib/pty-daemon-cleanup.ts`
-  (`killAllPtyDaemons`), called from the `forceFullCleanup` branch of
-  `before-quit` in `apps/desktop/src/main/index.ts`. The `before-quit` handler
+  (`killAllPtyDaemons`), called by the terminal teardown callback passed to
+  `runQuitCleanup` from `before-quit` in `apps/desktop/src/main/index.ts`. The
+  helper only invokes that callback for full cleanup. The `before-quit` handler
   must `event.preventDefault()` **unconditionally** (before any branch): the
   cleanup is async, and without preventDefault Electron terminates the main
   process the instant the handler suspends at its first `await`, before the
@@ -971,7 +979,10 @@ notify the user and switch to theirs.
   `group-focus-within` as well as `group-hover`. The badge cluster only hid on
   `group-hover`, so on the active/focused row the ↓N badge and the row actions
   overlapped in the shared grid cell — added `group-focus-within:hidden` to the
-  badge cluster so it hides exactly when the actions appear.)
+  badge cluster so it hides exactly when the actions appear.);
+  `2b68b7c77` (2026-08-04 merge: upstream #6098 limited diff stats to the active
+  workspace and #6021 added bulk selection. Retained the ↓N badge outside the
+  active-only gate and hid it while a row is selected.)
 - **Override policy:** **OVERRIDABLE — and flagged DELETE ON MERGE.** Upstream
   `getBranchSyncStatus.pullCount` already exists; prefer wiring the sidebar to
   that (plus a fetch) over keeping this. If upstream ships a real ahead/behind
@@ -990,13 +1001,16 @@ notify the user and switch to theirs.
 
 ## F2 — Don't warn "unpushed commits" for merged-then-deleted branches
 
-- **Commits:** `08894008e`
+- **Commits:** `08894008e`; `2b68b7c77` (2026-08-04 merge: upstream moved
+  cleanup-state reads into a worker task; re-applied the deleted-upstream guard
+  in the worker implementation.)
 - **Override policy:** **OVERRIDABLE** (genuine bug fix, not Windows-specific).
   If upstream fixes the same false warning, adopt theirs.
 - **What:** the branch-sync / cleanup warning no longer flags "unpushed commits"
   when the branch's upstream was merged and then deleted (the local commits are
   already in the base, so the warning was a false positive).
-- **Where:** `packages/host-service/src/trpc/router/workspace-cleanup/workspace-cleanup.ts`.
+- **Where:** `packages/host-service/src/workers/tasks/git.ts`
+  (`gitWorktreeStateTask`, `wasPushedRemoteDeleted`).
 - **Scan for:** upstream changes to the unpushed-commits / branch-sync warning
   logic that supersede this guard.
 
@@ -1053,7 +1067,8 @@ notify the user and switch to theirs.
 
 ## F6 — Force v2 on and lock the "Try Superset v2" opt-out toggle
 
-- **Commits:** `c1d3fc4df`
+- **Commits:** `c1d3fc4df`; `2b68b7c77` (2026-08-04 merge: upstream added the
+  v1-to-v2 migration decision path; retained the fork's unconditional v2 gate.)
 - **Override policy:** **LOCKED for this fork.** This fork is v2-only on Windows
   (v1 untested), so we never want the opt-out. Not a candidate to switch to
   upstream — upstream deliberately keeps v1/v2 selectable.
@@ -1131,7 +1146,9 @@ notify the user and switch to theirs.
 
 ## F10 — Bound and diagnose large `gh` open-PR sweep responses
 
-- **Commits:** `a47242045`, `d47f255b1`
+- **Commits:** `a47242045`, `d47f255b1`; `2b68b7c77` (2026-08-04 merge:
+  upstream moved PR work off the host loop and revised Sentry handling; retained
+  the bounded sweep buffer and diagnostics in the refactored runtime.)
 - **Override policy:** **OVERRIDABLE.** Upstream introduced the sweep in
   `b98580d63` (#5455). If upstream raises the buffer or reduces the REST payload,
   adopt its fix and remove this patch. The diagnostics are temporary: remove
