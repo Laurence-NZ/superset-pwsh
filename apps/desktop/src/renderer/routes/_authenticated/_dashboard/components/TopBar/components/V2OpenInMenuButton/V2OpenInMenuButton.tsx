@@ -129,8 +129,9 @@ export function V2OpenInMenuButton({
 						{branch && (
 							<OverflowFadeText
 								className={cn(
-									"max-w-[140px] text-muted-foreground tabular-nums",
+									"text-muted-foreground tabular-nums",
 									isTabBar ? "inline-block" : "hidden @[240px]:inline-block",
+									isTabBar ? "max-w-24" : "max-w-[140px]",
 								)}
 								title={branch}
 							>

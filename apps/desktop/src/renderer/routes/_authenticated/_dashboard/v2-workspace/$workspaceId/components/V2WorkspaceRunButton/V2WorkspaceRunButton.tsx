@@ -9,7 +9,6 @@ import { cn } from "@superset/ui/utils";
 import { useNavigate } from "@tanstack/react-router";
 import { ChevronDown, Play, Settings, Square, X } from "lucide-react";
 import { useCallback } from "react";
-import { useHotkeyDisplay } from "renderer/hotkeys";
 import { useSetSettingsSearchQuery } from "renderer/stores/settings-state";
 import type { WorkspaceRunDefinition } from "shared/workspace-run-definition";
 
@@ -34,7 +33,6 @@ export function V2WorkspaceRunButton({
 }: V2WorkspaceRunButtonProps) {
 	const navigate = useNavigate();
 	const setSettingsSearchQuery = useSetSettingsSearchQuery();
-	const hotkeyText = useHotkeyDisplay("RUN_WORKSPACE_COMMAND").text;
 	const hasRunCommand = (definition?.commands ?? []).length > 0;
 
 	const handleConfigureClick = useCallback(() => {
@@ -88,11 +86,6 @@ export function V2WorkspaceRunButton({
 			>
 				<Icon className="size-3 shrink-0" />
 				<span>{label}</span>
-				{hotkeyText && hotkeyText !== "Unassigned" && (
-					<span className="hidden text-[10px] tracking-wide text-muted-foreground/60 sm:inline">
-						{hotkeyText}
-					</span>
-				)}
 			</button>
 
 			<DropdownMenu>
