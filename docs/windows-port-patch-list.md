@@ -919,7 +919,7 @@ For **each** patch entry:
 
 ## W31 — Read the ConPTY child PID after asynchronous startup
 
-- **Commits:** _Pending commit._
+- **Commits:** `ab64af130`
 - **Override policy:** **LOCKED** (win32 node-pty lifecycle).
 - **Why:** `node-pty` initializes `WindowsTerminal.pid` to `0`, then replaces it
   with the ConPTY child PID after `ready_datapipe`. Copying `term.pid` into the
