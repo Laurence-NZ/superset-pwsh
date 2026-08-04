@@ -3,6 +3,7 @@
 // host-service event loop. Credential env is resolved in-process (it needs
 // the credential provider) and crosses as plain data.
 
+import { rm } from "node:fs/promises";
 import {
 	type ResolvedGitInfo,
 	readGitIdentity,
@@ -163,10 +164,22 @@ export const gitWorktreeRemoveTask = defineWorkerTask<
 		// A `worktree list` failure throws out of the task: the post-remove
 		// state is unknown and the caller must not treat it as removed.
 		const raw = await git.raw(["worktree", "list", "--porcelain"]);
+		const stillRegistered = parseWorktreeList(raw).some(
+			(worktree) => normalizeWorktreePath(worktree.path) === target,
+		);
+		if (!stillRegistered) {
+			// Git can unregister a worktree on Windows while leaving its directory
+			// behind when junctions or transient file locks block deletion. Node's
+			// recursive removal unlinks junctions safely and retries those locks.
+			await rm(worktreePath, {
+				recursive: true,
+				force: true,
+				maxRetries: 5,
+				retryDelay: 100,
+			});
+		}
 		return {
-			stillRegistered: parseWorktreeList(raw).some(
-				(w) => normalizeWorktreePath(w.path) === target,
-			),
+			stillRegistered,
 		};
 	},
 });
