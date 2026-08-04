@@ -392,7 +392,9 @@ For **each** patch entry:
 
 ## W14 — `fs.rm` backstop after `git worktree remove` on Windows
 
-- **Commits:** `1a65c4bbf`
+- **Commits:** `1a65c4bbf`; `4cf221772` (2026-08-05 merge follow-up:
+  upstream had moved worktree removal into the git worker; restored the
+  backstop after the worker confirms the worktree is unregistered.)
 - **Override policy:** **LOCKED** (Windows filesystem behaviour).
 - **Why:** `git worktree remove --force --force` unregisters the worktree but on
   Windows its recursive delete bails on pnpm `node_modules` junctions and locked
@@ -403,7 +405,8 @@ For **each** patch entry:
   true, maxRetries })` — unlinks junctions as links and retries transient
   Windows `EBUSY`/`EPERM`. General lesson: on Windows never trust git's own
   recursive delete to clear disk; back it with `fs.rm`.
-- **Where:** `packages/host-service/src/trpc/router/workspace-cleanup/workspace-cleanup.ts`.
+- **Where:** `packages/host-service/src/workers/tasks/git.ts`
+  (`gitWorktreeRemoveTask`).
 - **Scan for:** upstream reliance on `git worktree remove` alone to free disk,
   with no `fs.rm` backstop, in any workspace/worktree cleanup path.
 
