@@ -133,6 +133,15 @@ export function TabItem<TData>({
 					// drag, so starting a drag (reorder, or merging a tab into a pane) no
 					// longer switches the active tab mid-gesture.
 					onClick={() => onSelect()}
+					onMouseDownCapture={(event) => {
+						if (event.button !== 1) return;
+
+						// Prevent the browser's native autoscroll gesture before it starts.
+						// Waiting for auxclick is too late once the tab strip overflows.
+						event.preventDefault();
+						event.stopPropagation();
+						onClose();
+					}}
 				>
 					{isEditing ? (
 						<div className="flex h-full w-full shrink-0 items-center px-2">
@@ -155,12 +164,6 @@ export function TabItem<TData>({
 									{/* biome-ignore lint/a11y/noStaticElementInteractions: tab selection is handled by the wrapper's mousedown; this title element is intentionally a non-focusable div so clicking a tab never steals focus from the active pane (issue #4967) */}
 									<div
 										className="flex h-full min-w-0 flex-1 items-center gap-1.5 pl-3 pr-1 text-left text-xs transition-colors"
-										onAuxClick={(event) => {
-											if (event.button === 1) {
-												event.preventDefault();
-												onClose();
-											}
-										}}
 										onDoubleClick={startEditing}
 									>
 										{icon && <span className="shrink-0">{icon}</span>}
