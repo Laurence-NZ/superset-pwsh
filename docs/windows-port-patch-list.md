@@ -93,7 +93,11 @@ For **each** patch entry:
   Explorer, not Finder.);
   `2b68b7c77` (2026-08-04 merge: upstream replaced the auth recovery and
   host-service membership lifecycle. Kept renderer URLs on
-  `getRuntimeApiUrl()` and coordinator/startup URLs on `getMainApiUrl()`.)
+  `getRuntimeApiUrl()` and coordinator/startup URLs on `getMainApiUrl()`.);
+  `698a283db` (2026-08-04 merge follow-up: upstream's new synchronous-process
+  lint rule flagged the port's existing Windows probes and `.superset`
+  lifecycle scripts. Added those ratcheted/tooling paths to the narrow Biome
+  overrides and fixed the merged main-process import order.)
 - **Override policy:** **LOCKED.** Upstream targets macOS/Linux; there is no
   upstream Windows port to defer to. Later, finer-grained W-entries refine and
   extend this base; verify them individually as they are migrated in.
