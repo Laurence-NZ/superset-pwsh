@@ -86,7 +86,11 @@ For **each** patch entry:
   sanitization choke point.);
   `bf6fedd63` (2026-07-31 merge: upstream #5978 introduced a reusable
   host-service respawn config provider. Kept its cloud URL routed through
-  `getMainApiUrl()` so respawns retain packaged-build URL sanitization.)
+  `getMainApiUrl()` so respawns retain packaged-build URL sanitization.);
+  `072f1f813` (2026-08-04 merge: upstream #6073 replaced the v2 sidebar
+  project's file-manager placeholder with a real action. Kept its failure
+  message routed through `getOpenInFileManagerLabel()` so Windows says
+  Explorer, not Finder.)
 - **Override policy:** **LOCKED.** Upstream targets macOS/Linux; there is no
   upstream Windows port to defer to. Later, finer-grained W-entries refine and
   extend this base; verify them individually as they are migrated in.
