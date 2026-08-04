@@ -1307,3 +1307,19 @@ notify the user and switch to theirs.
   Run button; the tab-bar branch label sharing the sidebar's 140px maximum.
 - **Symptom if broken:** the Run shortcut or a long branch name crowds the v2
   pane tab bar and pushes trailing actions toward the window controls.
+
+## F16 — Middle-click closes tabs in an overflowing v2 tab bar
+
+- **Commits:** `85c09be13`
+- **Override policy:** **OVERRIDABLE.** If upstream prevents native autoscroll
+  while retaining middle-click tab closing, adopt its implementation.
+- **Invariant:** Pressing the middle mouse button anywhere on a v2 pane tab
+  closes that tab, including when the tab strip overflows horizontally. The
+  handler prevents the browser's native autoscroll gesture on mouse down rather
+  than waiting for `auxclick`, while normal tab-strip scrolling remains intact.
+- **Where:** `packages/panes/src/react/components/Workspace/components/TabBar/components/TabItem/TabItem.tsx`.
+- **Scan for:** middle-click handling moving back to `auxclick`, being limited
+  to the tab title, or failing to call `preventDefault()` before an overflowing
+  scroll container starts native autoscroll.
+- **Symptom if broken:** middle-clicking a tab in a full tab strip shows the
+  autoscroll cursor or scrolls the strip instead of closing the tab.
