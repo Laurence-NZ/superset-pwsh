@@ -460,7 +460,8 @@ For **each** patch entry:
 
 ## W16 — Reconcile win32 terminal sessions against the adopted daemon
 
-- **Commits:** `95467bee9`
+- **Commits:** `95467bee9` (original startup sweep);
+  `e9c01672e` (daemon-aware reconciliation that preserves live sessions).
 - **Override policy:** **LOCKED** (win32 daemon lifecycle).
 - **Why:** a full Electron exit kills the daemon through the Windows Job Object,
   leaving terminal rows `active` because their PTY exit could not reach the old
