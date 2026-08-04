@@ -36,7 +36,12 @@ export async function getGitHubUsernameViaGh(
 		const { stdout } = await execFileAsync(
 			"gh",
 			["api", "user", "--jq", ".login"],
-			{ encoding: "utf8", timeout: 10_000, env: shellEnv },
+			{
+				encoding: "utf8",
+				timeout: 10_000,
+				env: shellEnv,
+				windowsHide: true,
+			},
 		);
 		return stdout.trim() || null;
 	} catch (error) {
