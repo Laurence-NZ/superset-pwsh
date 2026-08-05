@@ -97,7 +97,11 @@ For **each** patch entry:
   `698a283db` (2026-08-04 merge follow-up: upstream's new synchronous-process
   lint rule flagged the port's existing Windows probes and `.superset`
   lifecycle scripts. Added those ratcheted/tooling paths to the narrow Biome
-  overrides and fixed the merged main-process import order.)
+  overrides and fixed the merged main-process import order.);
+  `f4635931a` (2026-08-05 merge: upstream split the existing chat service into
+  `@superset/chat-legacy`. Kept the desktop runtime on the sanitized
+  `getMainApiUrl()` path and moved the synchronous-process lint exemption with
+  the renamed legacy Anthropic implementation.)
 - **Override policy:** **LOCKED.** Upstream targets macOS/Linux; there is no
   upstream Windows port to defer to. Later, finer-grained W-entries refine and
   extend this base; verify them individually as they are migrated in.
@@ -1159,7 +1163,11 @@ notify the user and switch to theirs.
 
 - **Commits:** `a47242045`, `d47f255b1`; `2b68b7c77` (2026-08-04 merge:
   upstream moved PR work off the host loop and revised Sentry handling; retained
-  the bounded sweep buffer and diagnostics in the refactored runtime.)
+  the bounded sweep buffer and diagnostics in the refactored runtime.);
+  `f4635931a` (2026-08-05 merge: upstream added throw-site error translation
+  and Sentry capture for unexpected service errors. Retained the process
+  heartbeat and bounded PR-sweep diagnostics because Sentry still cannot record
+  the lead-up to an abrupt native exit.)
 - **Override policy:** **OVERRIDABLE.** Upstream introduced the sweep in
   `b98580d63` (#5455). If upstream raises the buffer or reduces the REST payload,
   adopt its fix and remove this patch. The diagnostics are temporary: remove
