@@ -46,6 +46,7 @@ export interface SidebarWorkspaceInput {
 	tabOrder: number;
 	sectionId: string | null;
 	pinnedAt: number | null;
+	isRunActive: boolean;
 	pendingTransaction: WorkspaceTransactionSnapshot | null;
 }
 
@@ -101,6 +102,7 @@ function decorateSidebarWorkspace(
 		updatedAt: workspace.updatedAt,
 		taskId: workspace.taskId,
 		isPinned: workspace.pinnedAt != null,
+		isRunActive: workspace.isRunActive,
 		pendingTransaction: workspace.pendingTransaction,
 	};
 }

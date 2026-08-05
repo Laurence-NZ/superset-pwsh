@@ -27,6 +27,7 @@ import type {
 } from "../../../../types";
 import { DashboardSidebarWorkspaceDiffStats } from "../DashboardSidebarWorkspaceDiffStats";
 import { DashboardSidebarWorkspaceIcon } from "../DashboardSidebarWorkspaceIcon";
+import { DashboardSidebarWorkspaceRunIndicator } from "../DashboardSidebarWorkspaceRunIndicator";
 import { DashboardSidebarWorkspaceChips } from "./components/DashboardSidebarWorkspaceChips";
 
 const PR_STATE_LABEL: Record<
@@ -295,17 +296,35 @@ export const DashboardSidebarExpandedWorkspaceRow = forwardRef<
 								)}
 							/>
 						) : (
-							<span
-								className={cn(
-									"truncate text-[13px] leading-tight transition-colors",
-									isActive || isSelected
-										? "text-foreground"
-										: "text-foreground/80",
+							<div className="flex min-w-0 items-center gap-1.5">
+								<span
+									className={cn(
+										"truncate text-[13px] leading-tight transition-colors",
+										isActive || isSelected
+											? "text-foreground"
+											: "text-foreground/80",
+									)}
+								>
+									{name || branch}
+									{isSelected && <span className="sr-only">, selected</span>}
+								</span>
+								{workspace.isRunActive && (
+									<Tooltip delayDuration={300}>
+										<TooltipTrigger asChild>
+											<span
+												className="flex shrink-0"
+												role="img"
+												aria-label="Workspace run active"
+											>
+												<DashboardSidebarWorkspaceRunIndicator />
+											</span>
+										</TooltipTrigger>
+										<TooltipContent side="top">
+											Workspace run active
+										</TooltipContent>
+									</Tooltip>
 								)}
-							>
-								{name || branch}
-								{isSelected && <span className="sr-only">, selected</span>}
-							</span>
+							</div>
 						)}
 
 						<div className="col-start-2 row-start-1 grid h-5 shrink-0 items-center justify-items-end [&>*]:col-start-1 [&>*]:row-start-1">

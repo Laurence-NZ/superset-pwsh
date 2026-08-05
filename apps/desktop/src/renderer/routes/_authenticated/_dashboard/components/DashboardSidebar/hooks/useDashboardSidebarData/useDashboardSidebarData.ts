@@ -270,6 +270,7 @@ export function useDashboardSidebarData() {
 					sectionId: sidebarWorkspaces.sidebarState.sectionId,
 					isHidden: sidebarWorkspaces.sidebarState.isHidden,
 					pinnedAt: sidebarWorkspaces.sidebarState.pinnedAt,
+					workspaceRunTerminals: sidebarWorkspaces.workspaceRunTerminals,
 				})),
 		[collections],
 	);
@@ -293,6 +294,9 @@ export function useDashboardSidebarData() {
 						sectionId: localState.sectionId,
 						isHidden: localState.isHidden,
 						pinnedAt: localState.pinnedAt,
+						isRunActive: Object.values(localState.workspaceRunTerminals).some(
+							(terminal) => terminal.state === "running",
+						),
 					},
 				];
 			}),
@@ -337,6 +341,7 @@ export function useDashboardSidebarData() {
 					// Auto-included mains have no local-state row; pinning one
 					// creates a row first (see setWorkspacePinned).
 					pinnedAt: null as number | null,
+					isRunActive: false,
 				})),
 		[hostWorkspaces],
 	);

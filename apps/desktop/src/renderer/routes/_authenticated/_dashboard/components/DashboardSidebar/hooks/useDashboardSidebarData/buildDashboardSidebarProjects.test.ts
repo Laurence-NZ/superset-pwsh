@@ -59,6 +59,7 @@ function makeWorkspace(
 		tabOrder: 1,
 		sectionId: null,
 		pinnedAt: null,
+		isRunActive: false,
 		pendingTransaction: null,
 		...overrides,
 	};
@@ -119,6 +120,17 @@ describe("buildDashboardSidebarProjects", () => {
 				: [child.workspace.id],
 		);
 		expect(allRenderedIds).toContain("orphan");
+	});
+
+	it("preserves whether a workspace run is active", () => {
+		const [project] = build({
+			visibleSidebarWorkspaces: [makeWorkspace({ isRunActive: true })],
+		});
+
+		const [child] = project.children;
+		expect(child.type).toBe("workspace");
+		if (child.type !== "workspace") throw new Error("expected workspace");
+		expect(child.workspace.isRunActive).toBe(true);
 	});
 
 	it("orders sections by tabOrder and places each workspace in its section", () => {
