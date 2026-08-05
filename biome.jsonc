@@ -95,7 +95,7 @@
 				"apps/desktop/src/main/lib/terminal-host/client.ts",
 				"apps/desktop/src/main/lib/terminal-host/process-command-line.ts",
 				"apps/desktop/src/lib/trpc/routers/workspaces/utils/teardown.ts",
-				"packages/chat/src/server/desktop/auth/anthropic/anthropic.ts",
+				"packages/chat-legacy/src/server/desktop/auth/anthropic/anthropic.ts",
 				"packages/host-service/src/providers/model-providers/LocalModelProvider/utils/resolveAnthropicCredential.ts",
 				"packages/host-service/src/terminal/user-shell.ts",
 				"packages/pty-daemon/src/process-tree.ts",

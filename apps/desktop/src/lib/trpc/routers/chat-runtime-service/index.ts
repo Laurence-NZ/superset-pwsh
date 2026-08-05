@@ -1,5 +1,5 @@
-import type { LifecycleEvent } from "@superset/chat/server/trpc";
-import { ChatRuntimeService } from "@superset/chat/server/trpc";
+import type { LifecycleEvent } from "@superset/chat-legacy/server/trpc";
+import { ChatRuntimeService } from "@superset/chat-legacy/server/trpc";
 import { appState } from "main/lib/app-state";
 import { getMainApiUrl } from "main/lib/desktop-runtime-flags";
 import { notificationsEmitter } from "main/lib/notifications/server";

@@ -14,6 +14,7 @@
  */
 
 import { monitorEventLoopDelay } from "node:perf_hooks";
+import * as Sentry from "@sentry/node";
 
 const DIAGNOSTIC_INTERVAL_MS = 60_000;
 
@@ -47,6 +48,7 @@ export function installProcessSafetyNet(): void {
 
 	process.on("unhandledRejection", (reason) => {
 		console.error("[host-service] unhandledRejection — staying up", { reason });
+		Sentry.captureException(reason);
 	});
 }
 
