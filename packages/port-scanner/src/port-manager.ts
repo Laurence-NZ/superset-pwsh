@@ -23,7 +23,12 @@ export const IDLE_SCAN_INTERVAL_MS = 30_000;
 const HINT_SCAN_DELAY_MS = 500;
 
 /** Ports to ignore (common privileged/system ports that are usually not dev servers) */
-const IGNORED_PORTS = new Set([22, 80, 443]);
+const IGNORED_PORTS = new Set([
+	22,
+	80,
+	443,
+	18765, // open-claude-in-chrome MCP bridge, not a workspace dev server
+]);
 
 const PORT_HINT_PATTERNS = [
 	/listening\s+on\s+(?:port\s+)?(\d+)/i,

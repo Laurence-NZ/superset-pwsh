@@ -235,6 +235,18 @@ describe("PortManager — #3372 concurrency (at most one lsof in flight)", () =>
 });
 
 describe("PortManager — port identity updates", () => {
+	it("ignores the open-claude-in-chrome MCP bridge port", async () => {
+		manager.upsertSession("p1", "ws1", 1000);
+
+		listeningPorts = [
+			{ port: 18765, pid: 1000, address: "127.0.0.1", processName: "node" },
+			{ port: 3000, pid: 1001, address: "127.0.0.1", processName: "node" },
+		];
+		await manager.forceScan();
+
+		expect(manager.getAllPorts().map((port) => port.port)).toEqual([3000]);
+	});
+
 	it("keeps common development service ports", async () => {
 		manager.upsertSession("p1", "ws1", 1000);
 
