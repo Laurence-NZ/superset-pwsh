@@ -1334,3 +1334,22 @@ notify the user and switch to theirs.
   scroll container starts native autoscroll.
 - **Symptom if broken:** middle-clicking a tab in a full tab strip shows the
   autoscroll cursor or scrolls the strip instead of closing the tab.
+
+## F17 — Show active workspace runs in the v2 sidebar
+
+- **Commits:** `eaefe014e`
+- **Override policy:** **OVERRIDABLE.** If upstream adds an equivalent v2
+  sidebar run-state indicator, adopt its implementation and remove this patch.
+- **Invariant:** Every expanded or collapsed v2 workspace row shows a small
+  pulsing emerald dot while any entry in that workspace's
+  `v2WorkspaceLocalState.workspaceRunTerminals` is `running`. The indicator
+  follows the same state as the v2 Run/Stop button and disappears when the run
+  stops. Do not derive v2 status from the legacy tabs store's `workspaceRun`.
+- **Where:** `DashboardSidebarWorkspaceItem` and its expanded, collapsed, and
+  run-indicator components; `useDashboardSidebarData.ts` and its sidebar
+  workspace types/builder/test.
+- **Scan for:** a v2 Run refactor that moves `workspaceRunTerminals`; sidebar
+  data mapping that drops `isRunActive`; removal of the run indicator from
+  either expanded or collapsed workspace rows.
+- **Symptom if broken:** the workspace Run button says Stop, but its sidebar row
+  has no emerald activity dot or continues showing one after the run stops.
