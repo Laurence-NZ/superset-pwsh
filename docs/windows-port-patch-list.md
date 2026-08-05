@@ -1362,3 +1362,17 @@ notify the user and switch to theirs.
   either expanded or collapsed workspace rows.
 - **Symptom if broken:** the workspace Run button says Stop, but its sidebar row
   has no emerald activity dot or continues showing one after the run stops.
+
+## F18 — Hide the Claude-in-Chrome MCP bridge port
+
+- **Commits:** `64e407100`
+- **Override policy:** **OVERRIDABLE.** Prefer an upstream configurable port
+  exclusion mechanism if one becomes available.
+- **Invariant:** Dynamic workspace port discovery ignores the fixed
+  `open-claude-in-chrome` MCP bridge port `18765` while retaining other ports
+  opened by Claude or its child processes.
+- **Where:** `packages/port-scanner/src/port-manager.ts` and its co-located test.
+- **Scan for:** removal of `18765` from `IGNORED_PORTS`, or broad agent-terminal
+  filtering that also hides development servers launched by an agent.
+- **Symptom if broken:** opening Claude with the browser MCP integration adds a
+  misleading `localhost:18765` workspace port chip.
