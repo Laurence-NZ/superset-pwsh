@@ -1516,7 +1516,11 @@ export async function createTerminalSessionInternal({
 		modeTracker: createModeTracker(cols, rows),
 	};
 	sessions.set(terminalId, session);
-	portManager.upsertSession(terminalId, workspaceId, pty.pid);
+	portManager.upsertSession(
+		terminalId,
+		workspaceId,
+		pty.pid > 0 ? pty.pid : null,
+	);
 
 	if (session.shellReadyState === "pending") {
 		session.shellReadyTimeoutId = setTimeout(() => {
@@ -1524,11 +1528,42 @@ export async function createTerminalSessionInternal({
 		}, SHELL_READY_TIMEOUT_MS);
 	}
 
+	let pidRefreshPending = false;
 	session.unsubscribeDaemon = daemon.subscribe(
 		terminalId,
 		{ replay: replayOnAdoption },
 		{
 			onOutput(chunk) {
+				// ConPTY reports pid=0 until its data pipe is ready. Output proves
+				// that boundary has passed, so refresh the live PID without delaying
+				// subscription (which could miss output from short-lived commands).
+				if (pty.pid <= 0 && !pidRefreshPending) {
+					pidRefreshPending = true;
+					void daemon
+						.list()
+						.then((daemonSessions) => {
+							const liveSession = daemonSessions.find(
+								(candidate) => candidate.id === terminalId && candidate.alive,
+							);
+							if (
+								liveSession?.pid &&
+								sessions.get(terminalId) === session &&
+								!session.exited
+							) {
+								pty.pid = liveSession.pid;
+								portManager.upsertSession(
+									terminalId,
+									workspaceId,
+									liveSession.pid,
+								);
+							}
+						})
+						.catch(() => {})
+						.finally(() => {
+							pidRefreshPending = false;
+						});
+				}
+
 				// Bytes flow daemon → host → xterm without UTF-8 decoding;
 				// per-chunk `.toString("utf8")` here would mangle codepoints
 				// straddling chunk boundaries. (See no-encoding-hops.test.ts.)

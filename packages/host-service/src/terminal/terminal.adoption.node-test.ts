@@ -450,6 +450,7 @@ describe("createTerminalSessionInternal — host-service restart adoption", () =
 		}
 
 		assert.equal(result.terminalId, terminalId);
+		await waitFor(() => result.pty.pid > 0, 3000);
 		assert.ok(result.pty.pid > 0, "pty pid should be populated");
 
 		const list = listTerminalSessions({ workspaceId });
