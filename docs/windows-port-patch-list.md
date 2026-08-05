@@ -942,33 +942,42 @@ For **each** patch entry:
 
 ## W31 — Read the ConPTY child PID after asynchronous startup
 
-- **Commits:** `ab64af130`
+- **Commits:** `ab64af130`; `77f8754f9`
 - **Override policy:** **LOCKED** (win32 node-pty lifecycle).
 - **Why:** `node-pty` initializes `WindowsTerminal.pid` to `0`, then replaces it
   with the ConPTY child PID after `ready_datapipe`. Copying `term.pid` into the
-  daemon adapter during construction permanently preserved `0`. The resource
-  monitor rejects non-positive PIDs, so its v2 endpoint returned no sessions
-  and the command-palette monitor showed **No matching workspaces** even while
-  terminals were running.
+  daemon adapter during construction permanently preserved `0`. The host
+  service could likewise register that open-time value with the port manager
+  before the daemon's live getter became positive. Resource and port scanners
+  reject non-positive PIDs, so neither could attribute the terminal's process
+  tree.
 - **Invariant:** `NodePtyAdapter.pid` reads the current `term.pid`; it must not
   cache the constructor-time value. After a terminal produces output,
   `daemon.list()` must report a positive integer PID so Windows process-tree
-  resource attribution can include the session.
+  attribution can include the session. A host terminal opened with PID `0`
+  must subscribe immediately, then refresh its PID from `daemon.list()` on
+  output and re-register the session with the port manager.
 - **Where:** `packages/pty-daemon/src/Pty/Pty.ts` (`NodePtyAdapter.pid`);
   `packages/pty-daemon/test/integration.test.ts` and `test/smoke-win32.ts`
-  (live session list assertions).
+  (live session list assertions); `packages/host-service/src/terminal/terminal.ts`
+  and `terminal.adoption.node-test.ts` (non-blocking host PID refresh).
 - **Scan for:** `this.pid = term.pid` or another constructor-time PID snapshot;
   changes to node-pty startup/readiness or the daemon session-list protocol;
-  resource-session filtering that accepts a session without a usable process
-  root.
+  registering the open-time PID with `portManager` without refreshing it after
+  ConPTY produces output; resource-session filtering that accepts a session
+  without a usable process root.
 - **Verify (Windows):** open two v2 terminals, then open **Check resources** from
   the command palette. Both workspaces/sessions appear with CPU and memory
-  values instead of an empty list. Automated: run `bun run smoke:win32` from
-  `packages/pty-daemon`; the generic Node integration file still contains
-  POSIX-only cases and is not the Windows smoke entry point.
+  values instead of an empty list. Run a workspace command that starts local
+  servers and confirm its sidebar port chip lists their listening ports.
+  Automated: run `bun run smoke:win32` from `packages/pty-daemon` and the
+  focused host-service fresh-open adoption test; the generic daemon Node
+  integration file still contains POSIX-only cases and is not the Windows
+  smoke entry point.
 - **Symptom if broken:** **Check resources** shows aggregate Superset usage but
   **No matching workspaces**; `/terminal/resource-sessions` returns an empty
-  array while the daemon lists live sessions with `pid: 0`.
+  array or the workspace port chip stays hidden while the daemon lists a live
+  session with a positive PID.
 
 ---
 
