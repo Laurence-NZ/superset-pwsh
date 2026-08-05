@@ -218,7 +218,6 @@ export function DashboardSidebarWorkspaceItem({
 					hostIsOnline={hostIsOnline}
 					isActive={isActive}
 					workspaceStatus={workspaceStatus}
-					isRunActive={workspace.isRunActive}
 					onClick={handleClick}
 					isCreatePending={isPending}
 					pullRequestState={pullRequest?.state ?? null}

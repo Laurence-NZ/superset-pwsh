@@ -44,7 +44,6 @@ export interface DashboardSidebarWorkspace {
 	updatedAt: Date;
 	taskId: string | null;
 	isPinned: boolean;
-	isRunActive: boolean;
 	pendingTransaction: WorkspaceTransactionSnapshot | null;
 }
 

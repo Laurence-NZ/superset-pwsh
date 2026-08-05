@@ -7,7 +7,6 @@ import type {
 	DashboardSidebarWorkspaceType,
 } from "../../../../types";
 import { DashboardSidebarWorkspaceIcon } from "../DashboardSidebarWorkspaceIcon";
-import { DashboardSidebarWorkspaceRunIndicator } from "../DashboardSidebarWorkspaceRunIndicator";
 
 interface DashboardSidebarCollapsedWorkspaceButtonProps
 	extends ComponentPropsWithoutRef<"button"> {
@@ -16,7 +15,6 @@ interface DashboardSidebarCollapsedWorkspaceButtonProps
 	hostIsOnline: boolean | null;
 	isActive: boolean;
 	workspaceStatus?: ActivePaneStatus | null;
-	isRunActive: boolean;
 	isCreatePending: boolean;
 	pullRequestState?: DashboardSidebarWorkspacePullRequest["state"] | null;
 }
@@ -32,7 +30,6 @@ export const DashboardSidebarCollapsedWorkspaceButton = forwardRef<
 			hostIsOnline,
 			isActive,
 			workspaceStatus = null,
-			isRunActive,
 			isCreatePending,
 			pullRequestState = null,
 			className,
@@ -64,14 +61,6 @@ export const DashboardSidebarCollapsedWorkspaceButton = forwardRef<
 					isCreatePending={isCreatePending}
 					pullRequestState={pullRequestState}
 				/>
-				{isRunActive && (
-					<span
-						className="absolute right-0.5 bottom-0.5"
-						title="Workspace run active"
-					>
-						<DashboardSidebarWorkspaceRunIndicator />
-					</span>
-				)}
 			</button>
 		);
 	},
