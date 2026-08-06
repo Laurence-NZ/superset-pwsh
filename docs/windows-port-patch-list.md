@@ -1344,26 +1344,7 @@ notify the user and switch to theirs.
 - **Symptom if broken:** middle-clicking a tab in a full tab strip shows the
   autoscroll cursor or scrolls the strip instead of closing the tab.
 
-## F17 — Show active workspace runs in the v2 sidebar
-
-- **Commits:** `eaefe014e`
-- **Override policy:** **OVERRIDABLE.** If upstream adds an equivalent v2
-  sidebar run-state indicator, adopt its implementation and remove this patch.
-- **Invariant:** Every expanded or collapsed v2 workspace row shows a small
-  pulsing emerald dot while any entry in that workspace's
-  `v2WorkspaceLocalState.workspaceRunTerminals` is `running`. The indicator
-  follows the same state as the v2 Run/Stop button and disappears when the run
-  stops. Do not derive v2 status from the legacy tabs store's `workspaceRun`.
-- **Where:** `DashboardSidebarWorkspaceItem` and its expanded, collapsed, and
-  run-indicator components; `useDashboardSidebarData.ts` and its sidebar
-  workspace types/builder/test.
-- **Scan for:** a v2 Run refactor that moves `workspaceRunTerminals`; sidebar
-  data mapping that drops `isRunActive`; removal of the run indicator from
-  either expanded or collapsed workspace rows.
-- **Symptom if broken:** the workspace Run button says Stop, but its sidebar row
-  has no emerald activity dot or continues showing one after the run stops.
-
-## F18 — Hide the Claude-in-Chrome MCP bridge port
+## F17 — Hide the Claude-in-Chrome MCP bridge port
 
 - **Commits:** `64e407100`
 - **Override policy:** **OVERRIDABLE.** Prefer an upstream configurable port
@@ -1376,3 +1357,18 @@ notify the user and switch to theirs.
   filtering that also hides development servers launched by an agent.
 - **Symptom if broken:** opening Claude with the browser MCP integration adds a
   misleading `localhost:18765` workspace port chip.
+
+## F18 — Retired active workspace run dot
+
+- **Commits:** `eaefe014e` (added); `7e972b205` (removed).
+- **Override policy:** **RETIRED — do not reapply.** Workspace port chips now
+  provide the useful sidebar activity signal without a second run-only marker.
+- **Invariant:** The v2 sidebar has no dedicated green workspace-run dot and
+  does not derive `isRunActive` from `workspaceRunTerminals`. Run/Stop state
+  remains available on the workspace Run button.
+- **Where:** No active patch files. The retired implementation touched
+  `DashboardSidebarWorkspaceItem` and `useDashboardSidebarData`.
+- **Scan for:** `DashboardSidebarWorkspaceRunIndicator`, sidebar `isRunActive`
+  fields, or merge recovery that restores `eaefe014e`.
+- **Symptom if broken:** workspace rows regain a redundant green dot alongside
+  their detected port chips, increasing sidebar noise and merge surface.
