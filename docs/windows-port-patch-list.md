@@ -105,7 +105,9 @@ For **each** patch entry:
   `17ea73f5c` (made upstream's initial-command node test named-pipe-aware and
   skipped its POSIX-only MAX_CANON cases on win32);
   `3bd9dcfc9` (made upstream's workspace-delete teardown integration test use
-  named pipes, the platform shell, and platform-native teardown scripts.)
+  named pipes, the platform shell, and platform-native teardown scripts.);
+  `530387606` (made the shared fake PTY execute Windows writes through the
+  session's actual cmd/PowerShell shell.)
 - **Override policy:** **LOCKED.** Upstream targets macOS/Linux; there is no
   upstream Windows port to defer to. Later, finer-grained W-entries refine and
   extend this base; verify them individually as they are migrated in.
