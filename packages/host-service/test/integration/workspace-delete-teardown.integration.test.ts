@@ -18,6 +18,7 @@ import { __resetSessionsForTesting } from "../../src/terminal/terminal";
 import { __setAccountShellForTesting } from "../../src/terminal/user-shell";
 import { cloudFlows } from "../helpers/cloud-fakes";
 import { createFishLikePtySpawner, shellQuote } from "../helpers/fake-pty";
+import { makeTestDaemonSocketPath } from "../helpers/platform";
 import {
 	createFeatureWorktreeScenario,
 	type FeatureWorktreeScenario,
@@ -55,12 +56,17 @@ describe("workspace delete teardown integration", () => {
 		}
 	});
 
-	async function setup(teardownScript: string): Promise<{
+	async function setup(teardownScript: {
+		posix: string;
+		windows: string;
+	}): Promise<{
 		scenario: FeatureWorktreeScenario;
 		markerPath: string;
 	}> {
 		tmp = mkdtempSync(join(tmpdir(), "host-service-delete-teardown-it-"));
-		const socketPath = join(tmp, "pty-daemon.sock");
+		const socketPath = makeTestDaemonSocketPath(
+			"host-service-delete-teardown-it",
+		);
 		server = new Server({
 			socketPath,
 			daemonVersion: "0.0.0-delete-teardown-integration-test",
@@ -70,12 +76,18 @@ describe("workspace delete teardown integration", () => {
 
 		process.env.SUPERSET_PTY_DAEMON_SOCKET = socketPath;
 		process.env.SUPERSET_HOME_DIR = tmp;
-		__setAccountShellForTesting("/bin/bash");
+		const shell =
+			process.platform === "win32"
+				? (process.env.COMSPEC ?? "cmd.exe")
+				: "/bin/bash";
+		__setAccountShellForTesting(shell);
 		initTerminalBaseEnv({
-			HOME: process.env.HOME ?? tmp,
+			COMSPEC: process.env.COMSPEC ?? "cmd.exe",
+			HOME: process.env.HOME ?? process.env.USERPROFILE ?? tmp,
 			LANG: "en_US.UTF-8",
-			PATH: process.env.PATH ?? "/usr/bin:/bin",
-			SHELL: "/bin/bash",
+			PATH: process.env.PATH ?? (process.platform === "win32" ? "" : "/usr/bin:/bin"),
+			SHELL: shell,
+			USERPROFILE: process.env.USERPROFILE ?? tmp,
 		});
 
 		scenario = await createFeatureWorktreeScenario({
@@ -87,22 +99,34 @@ describe("workspace delete teardown integration", () => {
 		const markerPath = join(tmp, "teardown-ran");
 		const scriptDir = join(scenario.repo.repoPath, ".superset");
 		mkdirSync(scriptDir, { recursive: true });
-		writeFileSync(
-			join(scriptDir, "teardown.sh"),
-			`#!/usr/bin/env bash\n${teardownScript
-				.replaceAll("{{WORKTREE}}", shellQuote(scenario.worktreePath))
-				.replaceAll("{{MARKER}}", shellQuote(markerPath))}\n`,
-			{ mode: 0o755 },
-		);
+		if (process.platform === "win32") {
+			writeFileSync(
+				join(scriptDir, "teardown.ts"),
+				teardownScript.windows
+					.replaceAll("{{WORKTREE}}", JSON.stringify(scenario.worktreePath))
+					.replaceAll("{{MARKER}}", JSON.stringify(markerPath)),
+				"utf-8",
+			);
+		} else {
+			writeFileSync(
+				join(scriptDir, "teardown.sh"),
+				`#!/usr/bin/env bash\n${teardownScript.posix
+					.replaceAll("{{WORKTREE}}", shellQuote(scenario.worktreePath))
+					.replaceAll("{{MARKER}}", shellQuote(markerPath))}\n`,
+				{ mode: 0o755 },
+			);
+		}
 		return { scenario, markerPath };
 	}
 
 	test("workspace.delete (external surface) runs teardown before removing the worktree", async () => {
 		// `test -d` pins the ordering: the marker only appears if the worktree
 		// still exists when teardown runs.
-		const { scenario, markerPath } = await setup(
-			"test -d {{WORKTREE}} && printf ran > {{MARKER}}",
-		);
+		const { scenario, markerPath } = await setup({
+			posix: "test -d {{WORKTREE}} && printf ran > {{MARKER}}",
+			windows:
+				'import { existsSync } from "node:fs";\nif (existsSync({{WORKTREE}})) await Bun.write({{MARKER}}, "ran");',
+		});
 
 		const result = await scenario.host.trpc.workspace.delete.mutate({
 			id: scenario.featureWorkspaceId,
@@ -116,9 +140,12 @@ describe("workspace delete teardown integration", () => {
 	});
 
 	test("workspace.delete surfaces a failed teardown as a warning without blocking the delete", async () => {
-		const { scenario, markerPath } = await setup(
-			'echo "external resources not cleaned" >&2\nprintf ran > {{MARKER}}\nexit 7',
-		);
+		const { scenario, markerPath } = await setup({
+			posix:
+				'echo "external resources not cleaned" >&2\nprintf ran > {{MARKER}}\nexit 7',
+			windows:
+				'console.error("external resources not cleaned");\nawait Bun.write({{MARKER}}, "ran");\nprocess.exit(7);',
+		});
 
 		const result = await scenario.host.trpc.workspace.delete.mutate({
 			id: scenario.featureWorkspaceId,
@@ -137,7 +164,10 @@ describe("workspace delete teardown integration", () => {
 	});
 
 	test("workspaceCleanup.destroy with force still skips teardown (interactive force-retry contract)", async () => {
-		const { scenario, markerPath } = await setup("printf ran > {{MARKER}}");
+		const { scenario, markerPath } = await setup({
+			posix: "printf ran > {{MARKER}}",
+			windows: 'await Bun.write({{MARKER}}, "ran");',
+		});
 
 		const result = await scenario.host.trpc.workspaceCleanup.destroy.mutate({
 			workspaceId: scenario.featureWorkspaceId,

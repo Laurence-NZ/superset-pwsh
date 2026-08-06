@@ -37,10 +37,21 @@ export function createFishLikePtySpawner(
 					return;
 				}
 
-				const child = spawnSync("/bin/sh", ["-c", command], {
-					cwd: meta.cwd,
-					env: meta.env,
-				});
+				const child =
+					process.platform === "win32"
+						? spawnSync(
+								process.env.COMSPEC ?? "cmd.exe",
+								["/d", "/s", "/c", command],
+								{
+									cwd: meta.cwd,
+									env: meta.env,
+									windowsHide: true,
+								},
+							)
+						: spawnSync("/bin/sh", ["-c", command], {
+								cwd: meta.cwd,
+								env: meta.env,
+							});
 				if (child.stdout.byteLength > 0) dataCallback?.(child.stdout);
 				if (child.stderr.byteLength > 0) dataCallback?.(child.stderr);
 				exitCallback?.({ code: child.status ?? 1, signal: null });
