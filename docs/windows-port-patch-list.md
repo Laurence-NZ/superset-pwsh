@@ -992,6 +992,29 @@ For **each** patch entry:
 
 ---
 
+## W32 — Keep Electron's native SQLite dependency unified
+
+- **Commits:** `f152dcb8c`.
+- **Override policy:** **OVERRIDABLE.** Drop the root override when every
+  workspace dependency resolves to the desktop's Electron-compatible
+  `better-sqlite3` version without it.
+- **Invariant:** The root `overrides` entry pins `better-sqlite3` to the same
+  version used by desktop and host-service. `bun.lock` must contain one
+  `better-sqlite3` package version.
+- **Why:** `electron-builder install-app-deps` rebuilds each native dependency
+  it finds into `apps/desktop/node_modules`. A stale transitive version can
+  overwrite the compatible direct version; `better-sqlite3@12.6.2` cannot
+  compile against Electron 41's V8 headers.
+- **Where:** root `package.json` (`overrides`) and `bun.lock`.
+- **Scan for:** Electron or `better-sqlite3` version changes; more than one
+  `better-sqlite3@…` package entry in `bun.lock`. Clear the desktop native
+  module before reinstalling so a real rebuilt directory cannot mask the pin.
+- **Symptom if broken:** `bun i` fails rebuilding `better-sqlite3` with
+  `PropertyCallbackInfo<Value>::This` missing, or the desktop module reports a
+  different version from its direct dependency.
+
+---
+
 # §2 — Features & fixes
 
 Bug fixes and new functionality this branch carries that are **not** part of the

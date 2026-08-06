@@ -85,7 +85,9 @@ describe("workspace delete teardown integration", () => {
 			COMSPEC: process.env.COMSPEC ?? "cmd.exe",
 			HOME: process.env.HOME ?? process.env.USERPROFILE ?? tmp,
 			LANG: "en_US.UTF-8",
-			PATH: process.env.PATH ?? (process.platform === "win32" ? "" : "/usr/bin:/bin"),
+			PATH:
+				process.env.PATH ??
+				(process.platform === "win32" ? "" : "/usr/bin:/bin"),
 			SHELL: shell,
 			USERPROFILE: process.env.USERPROFILE ?? tmp,
 		});

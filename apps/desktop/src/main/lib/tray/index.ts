@@ -9,8 +9,8 @@ import {
 } from "electron";
 import { loadToken } from "lib/trpc/routers/auth/utils/auth-functions";
 import { focusMainWindow, quitApp } from "main/index";
-import { getMainApiUrl } from "main/lib/desktop-runtime-flags";
 import { checkForUpdatesInteractive } from "main/lib/auto-updater";
+import { getMainApiUrl } from "main/lib/desktop-runtime-flags";
 import {
 	getHostServiceCoordinator,
 	type HostServiceStatusEvent,
