@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import os from "node:os";
 import { getListeningPortsForPids, getProcessTreesForPids } from "./scanner.ts";
 
 /**
@@ -131,6 +132,10 @@ describe("getListeningPortsForPids (real sockets)", () => {
 			const ports = await getListeningPortsForPids([process.pid]);
 			expect(ports.map((info) => info.port)).toContain(listeningPort);
 			expect(ports.every((info) => info.pid === process.pid)).toBe(true);
+			if (os.platform() === "win32") {
+				const port = ports.find((info) => info.port === listeningPort);
+				expect(typeof port?.commandLine).toBe("string");
+			}
 		} finally {
 			server.stop(true);
 		}

@@ -1380,32 +1380,20 @@ notify the user and switch to theirs.
 - **Symptom if broken:** middle-clicking a tab in a full tab strip shows the
   autoscroll cursor or scrolls the strip instead of closing the tab.
 
-## F17 — Hide the Claude-in-Chrome MCP bridge port
+## F17 — Hide Claude-in-Chrome MCP sidecar ports
 
 - **Commits:** `64e407100`
 - **Override policy:** **OVERRIDABLE.** Prefer an upstream configurable port
   exclusion mechanism if one becomes available.
-- **Invariant:** Dynamic workspace port discovery ignores the fixed
-  `open-claude-in-chrome` MCP bridge port `18765` while retaining other ports
-  opened by Claude or its child processes.
-- **Where:** `packages/port-scanner/src/port-manager.ts` and its co-located test.
-- **Scan for:** removal of `18765` from `IGNORED_PORTS`, or broad agent-terminal
-  filtering that also hides development servers launched by an agent.
-- **Symptom if broken:** opening Claude with the browser MCP integration adds a
-  misleading `localhost:18765` workspace port chip.
-
-## F18 — Preserve ephemeral agent-sidecar port research
-
-- **Commits:** `1fcec8dda`
-- **Override policy:** **DROPPABLE after implementation or an upstream fix.**
-  Remove the plan once its findings have been incorporated into the chosen
-  solution or made obsolete by upstream port-exclusion support.
-- **Invariant:** The measured Windows process ownership, command-line markers,
-  safety constraints, and candidate approaches for hiding OCIC's ephemeral
-  sidecar ports remain available until an implementation decision is made.
-- **Where:** `plans/hide-agent-sidecar-ephemeral-ports.md`.
-- **Scan for:** an upstream configurable port exclusion mechanism, port scanner
-  command-line collection, or removal of the plan before its constraints are
-  captured elsewhere.
-- **Symptom if broken:** future work repeats the process-tree investigation or
-  hides legitimate `wrangler dev` / Node inspector ports with a broad filter.
+- **Invariant:** Dynamic workspace port discovery ignores the fixed bridge port
+  `18765` and ephemeral ports whose owning command line is inside
+  `open-claude-in-chrome/host/codemode`. Other ports opened by Claude or its
+  children remain visible, including ordinary `wrangler dev` and Node inspector
+  ports. Missing command-line metadata fails open and leaves the port visible.
+- **Where:** `packages/port-scanner/src/scanner.ts`,
+  `packages/port-scanner/src/port-manager.ts`, and their co-located tests.
+- **Scan for:** removal of `18765` from `IGNORED_PORTS`, removal of Windows
+  command-line collection, or broad filtering by agent, `node`, `workerd`, or
+  inspector port number.
+- **Symptom if broken:** opening Claude with the browser MCP integration adds
+  misleading workspace port chips for its bridge or code-mode sidecars.

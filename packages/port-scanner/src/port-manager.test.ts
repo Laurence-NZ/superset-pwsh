@@ -46,6 +46,7 @@ interface MockPortInfo {
 	pid: number;
 	address: string;
 	processName: string;
+	commandLine?: string;
 }
 
 const spy: ScannerSpy = {
@@ -245,6 +246,57 @@ describe("PortManager — port identity updates", () => {
 		await manager.forceScan();
 
 		expect(manager.getAllPorts().map((port) => port.port)).toEqual([3000]);
+	});
+
+	it("ignores ephemeral open-claude-in-chrome sidecar ports", async () => {
+		manager.upsertSession("p1", "ws1", 1000);
+
+		listeningPorts = [
+			{
+				port: 49_287,
+				pid: 1001,
+				address: "127.0.0.1",
+				processName: "workerd",
+				commandLine:
+					"D:\\stash\\open-claude-in-chrome\\host\\codemode\\worker\\node_modules\\workerd.exe serve",
+			},
+			{
+				port: 49_290,
+				pid: 1002,
+				address: "127.0.0.1",
+				processName: "node",
+				commandLine:
+					"node D:/stash/open-claude-in-chrome/host/codemode/server-hybrid.js",
+			},
+		];
+		await manager.forceScan();
+
+		expect(manager.getAllPorts()).toHaveLength(0);
+	});
+
+	it("keeps unrelated workerd and ports with unavailable command lines", async () => {
+		manager.upsertSession("p1", "ws1", 1000);
+
+		listeningPorts = [
+			{
+				port: 8787,
+				pid: 1001,
+				address: "127.0.0.1",
+				processName: "workerd",
+				commandLine: "wrangler dev --port 8787",
+			},
+			{
+				port: 9229,
+				pid: 1001,
+				address: "127.0.0.1",
+				processName: "node",
+			},
+		];
+		await manager.forceScan();
+
+		expect(manager.getAllPorts().map((port) => port.port)).toEqual([
+			8787, 9229,
+		]);
 	});
 
 	it("keeps common development service ports", async () => {

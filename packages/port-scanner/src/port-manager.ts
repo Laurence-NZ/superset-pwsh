@@ -30,6 +30,19 @@ const IGNORED_PORTS = new Set([
 	18765, // open-claude-in-chrome MCP bridge, not a workspace dev server
 ]);
 
+const IGNORED_COMMAND_PATTERNS = [
+	/[\\/]open-claude-in-chrome[\\/]host[\\/]codemode[\\/]/i,
+];
+
+function shouldIgnorePort(info: PortInfo): boolean {
+	const { commandLine } = info;
+	return (
+		IGNORED_PORTS.has(info.port) ||
+		(commandLine !== undefined &&
+			IGNORED_COMMAND_PATTERNS.some((pattern) => pattern.test(commandLine)))
+	);
+}
+
 const PORT_HINT_PATTERNS = [
 	/listening\s+on\s+(?:port\s+)?(\d+)/i,
 	/server\s+(?:started|running)\s+(?:on|at)\s+(?:http:\/\/)?(?:localhost|127\.0\.0\.1|0\.0\.0\.0)?:?(\d+)/i,
@@ -458,9 +471,7 @@ export class PortManager extends EventEmitter {
 	}): void {
 		const now = Date.now();
 
-		const validPortInfos = portInfos.filter(
-			(info) => !IGNORED_PORTS.has(info.port),
-		);
+		const validPortInfos = portInfos.filter((info) => !shouldIgnorePort(info));
 		const dedupedPortInfos = dedupePortInfosByPort(validPortInfos);
 
 		const seenKeys = new Set<string>();

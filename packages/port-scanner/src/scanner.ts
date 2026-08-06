@@ -54,6 +54,12 @@ export interface PortInfo {
 	pid: number;
 	address: string;
 	processName: string;
+	commandLine?: string;
+}
+
+interface WindowsProcessDetails {
+	name: string;
+	commandLine?: string;
 }
 
 interface ProcessTableEntry {
@@ -267,7 +273,7 @@ async function getListeningPortsWindows(
 
 		const pidSet = new Set(pids);
 		const ports: PortInfo[] = [];
-		const processNames = new Map<number, string>();
+		const processDetails = new Map<number, WindowsProcessDetails>();
 
 		// Collect unique PIDs that we need to look up names for
 		const pidsToLookup: number[] = [];
@@ -283,20 +289,21 @@ async function getListeningPortsWindows(
 			const pid = Number.parseInt(pidStr, 10);
 			if (!pidSet.has(pid)) continue;
 
-			if (!processNames.has(pid) && !pidsToLookup.includes(pid)) {
+			if (!processDetails.has(pid) && !pidsToLookup.includes(pid)) {
 				pidsToLookup.push(pid);
 			}
 		}
 
-		// Fetch process names in parallel
-		const nameResults = await Promise.all(
+		// Fetch process details in parallel. Command lines let callers distinguish
+		// tool sidecars from ordinary dev servers with the same executable name.
+		const detailResults = await Promise.all(
 			pidsToLookup.map(async (pid) => ({
 				pid,
-				name: await getProcessNameWindows(pid, signal),
+				details: await getProcessDetailsWindows(pid, signal),
 			})),
 		);
-		for (const { pid, name } of nameResults) {
-			processNames.set(pid, name);
+		for (const { pid, details } of detailResults) {
+			processDetails.set(pid, details);
 		}
 
 		// Now build the ports array
@@ -324,11 +331,13 @@ async function getListeningPortsWindows(
 
 			if (port < 1 || port > 65535) continue;
 
+			const details = processDetails.get(pid);
 			ports.push({
 				port,
 				pid,
 				address,
-				processName: processNames.get(pid) || "unknown",
+				processName: details?.name ?? "unknown",
+				commandLine: details?.commandLine,
 			});
 		}
 
@@ -339,12 +348,12 @@ async function getListeningPortsWindows(
 }
 
 /**
- * Get process name for a PID on Windows
+ * Get process details for a PID on Windows.
  */
-async function getProcessNameWindows(
+async function getProcessDetailsWindows(
 	pid: number,
 	signal?: AbortSignal,
-): Promise<string> {
+): Promise<WindowsProcessDetails> {
 	try {
 		const { stdout: output } = await execFileAsync(
 			"powershell",
@@ -352,12 +361,26 @@ async function getProcessNameWindows(
 				"-NoProfile",
 				"-NonInteractive",
 				"-Command",
-				`(Get-Process -Id ${pid} -ErrorAction Stop).ProcessName`,
+				`Get-CimInstance -ClassName Win32_Process -Filter "ProcessId = ${pid}" -Property Name,CommandLine -ErrorAction Stop | Select-Object Name,CommandLine | ConvertTo-Json -Compress`,
 			],
 			{ timeout: EXEC_TIMEOUT_MS, signal, windowsHide: true },
 		);
-		return output.trim() || "unknown";
+		const details = JSON.parse(output.trim()) as {
+			Name?: unknown;
+			CommandLine?: unknown;
+		};
+		const name =
+			typeof details.Name === "string"
+				? details.Name.replace(/\.exe$/i, "")
+				: "unknown";
+		return {
+			name,
+			commandLine:
+				typeof details.CommandLine === "string"
+					? details.CommandLine
+					: undefined,
+		};
 	} catch {
-		return "unknown";
+		return { name: "unknown" };
 	}
 }
