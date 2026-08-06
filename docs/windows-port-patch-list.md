@@ -1382,7 +1382,7 @@ notify the user and switch to theirs.
 
 ## F17 — Hide Claude-in-Chrome MCP sidecar ports
 
-- **Commits:** `64e407100`
+- **Commits:** `64e407100`, `eaae571ef`
 - **Override policy:** **OVERRIDABLE.** Prefer an upstream configurable port
   exclusion mechanism if one becomes available.
 - **Invariant:** Dynamic workspace port discovery ignores the fixed bridge port
