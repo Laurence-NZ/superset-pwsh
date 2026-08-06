@@ -216,11 +216,10 @@ function getConfirmOnQuitSetting(): boolean {
 
 app.on("before-quit", async (event) => {
 	if (isQuitting) return;
+	event.preventDefault();
 
 	const isDev = process.env.NODE_ENV === "development";
 	if (!skipQuitConfirmation && !isDev && getConfirmOnQuitSetting()) {
-		event.preventDefault();
-
 		try {
 			const { response } = await dialog.showMessageBox({
 				type: "question",
