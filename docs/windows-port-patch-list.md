@@ -1393,3 +1393,19 @@ notify the user and switch to theirs.
   filtering that also hides development servers launched by an agent.
 - **Symptom if broken:** opening Claude with the browser MCP integration adds a
   misleading `localhost:18765` workspace port chip.
+
+## F18 — Preserve ephemeral agent-sidecar port research
+
+- **Commits:** `1fcec8dda`
+- **Override policy:** **DROPPABLE after implementation or an upstream fix.**
+  Remove the plan once its findings have been incorporated into the chosen
+  solution or made obsolete by upstream port-exclusion support.
+- **Invariant:** The measured Windows process ownership, command-line markers,
+  safety constraints, and candidate approaches for hiding OCIC's ephemeral
+  sidecar ports remain available until an implementation decision is made.
+- **Where:** `plans/hide-agent-sidecar-ephemeral-ports.md`.
+- **Scan for:** an upstream configurable port exclusion mechanism, port scanner
+  command-line collection, or removal of the plan before its constraints are
+  captured elsewhere.
+- **Symptom if broken:** future work repeats the process-tree investigation or
+  hides legitimate `wrangler dev` / Node inspector ports with a broad filter.
