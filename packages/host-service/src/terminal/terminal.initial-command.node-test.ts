@@ -33,12 +33,22 @@ import { __setAccountShellForTesting } from "./user-shell.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TEST_HOME = path.join(os.tmpdir(), `host-svc-initcmd-${process.pid}`);
-const SOCK = path.join(os.tmpdir(), `host-svc-initcmd-${process.pid}.sock`);
+const IS_WINDOWS = process.platform === "win32";
+const SOCK = makeTestDaemonSocketPath("host-svc-initcmd");
 const MIGRATIONS = path.resolve(__dirname, "../../drizzle");
+const TEST_SHELL = IS_WINDOWS ? (process.env.COMSPEC ?? "cmd.exe") : "/bin/sh";
+const testPosix = IS_WINDOWS ? test.skip : test;
 
 let server: Server;
 let db: HostDb;
 let workspaceId: string;
+
+function makeTestDaemonSocketPath(prefix: string): string {
+	const id = `${prefix}-${process.pid}`;
+	return IS_WINDOWS
+		? String.raw`\\.\pipe\${id}`
+		: path.join(os.tmpdir(), `${id}.sock`);
+}
 
 before(async () => {
 	fs.mkdirSync(TEST_HOME, { recursive: true });
@@ -56,11 +66,13 @@ before(async () => {
 	process.env.HOST_SERVICE_VERSION = "0.0.0-initcmd-e2e";
 	process.env.NODE_ENV = "development";
 
-	__setAccountShellForTesting("/bin/sh");
+	__setAccountShellForTesting(TEST_SHELL);
 	initTerminalBaseEnv({
-		PATH: process.env.PATH ?? "/usr/bin:/bin",
-		HOME: process.env.HOME ?? TEST_HOME,
-		SHELL: "/bin/sh",
+		COMSPEC: process.env.COMSPEC ?? "cmd.exe",
+		PATH: process.env.PATH ?? (IS_WINDOWS ? "" : "/usr/bin:/bin"),
+		HOME: process.env.HOME ?? process.env.USERPROFILE ?? TEST_HOME,
+		SHELL: TEST_SHELL,
+		USERPROFILE: process.env.USERPROFILE ?? TEST_HOME,
 	});
 
 	db = createDb(path.join(TEST_HOME, "host.db"), MIGRATIONS);
@@ -91,7 +103,7 @@ after(async () => {
 });
 
 describe("initialCommand delivery", () => {
-	test("a >2KB initialCommand executes fully (no MAX_CANON truncation)", async () => {
+	testPosix("a >2KB initialCommand executes fully (no MAX_CANON truncation)", async () => {
 		const terminalId = `e2e-longcmd-${randomUUID().slice(0, 8)}`;
 		const outFile = path.join(TEST_HOME, `long-${terminalId}`);
 		// Well past the 1024-byte canonical-mode line cap. The head/tail
@@ -127,7 +139,7 @@ describe("initialCommand delivery", () => {
 		await disposeSessionAndWait(terminalId, db);
 	});
 
-	test("staging failure falls back to typing the full command", async () => {
+	testPosix("staging failure falls back to typing the full command", async () => {
 		const terminalId = `e2e-fallback-${randomUUID().slice(0, 8)}`;
 		const outFile = path.join(TEST_HOME, `fallback-${terminalId}`);
 		// Over the 512-byte staging threshold but under MAX_CANON, so the
@@ -167,7 +179,7 @@ describe("initialCommand delivery", () => {
 		}
 	});
 
-	test("pre-Enter teardown unlinks the staged script", async () => {
+	testPosix("pre-Enter teardown unlinks the staged script", async () => {
 		const terminalId = `e2e-cleanup-${randomUUID().slice(0, 8)}`;
 		const sentinel = path.join(TEST_HOME, `cleanup-ran-${terminalId}`);
 		// Padded past the staging threshold; the sentinel write distinguishes
@@ -202,7 +214,7 @@ describe("initialCommand delivery", () => {
 		assert.equal(fs.existsSync(sentinel), false);
 	});
 
-	test("short commands are still typed verbatim into the PTY", async () => {
+	testPosix("short commands are still typed verbatim into the PTY", async () => {
 		const terminalId = `e2e-shortcmd-${randomUUID().slice(0, 8)}`;
 		const id = randomUUID().slice(0, 6);
 		const outFile = path.join(TEST_HOME, `short-${terminalId}`);

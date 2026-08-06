@@ -1043,7 +1043,10 @@ function queueInitialCommand(
 		// to disk; only a short source line is typed.
 		let typedText = commandText;
 		let scriptPath: string | null = null;
+		// MAX_CANON is POSIX-only. Windows shells receive the command directly;
+		// they cannot source the generated POSIX launch script.
 		if (
+			process.platform !== "win32" &&
 			Buffer.byteLength(commandText, "utf8") > MAX_TYPED_INITIAL_COMMAND_BYTES
 		) {
 			const staged = stageInitialCommandScript(session, commandText);
