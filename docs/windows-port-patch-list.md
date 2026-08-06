@@ -101,7 +101,11 @@ For **each** patch entry:
   `f4635931a` (2026-08-05 merge: upstream split the existing chat service into
   `@superset/chat-legacy`. Kept the desktop runtime on the sanitized
   `getMainApiUrl()` path and moved the synchronous-process lint exemption with
-  the renamed legacy Anthropic implementation.)
+  the renamed legacy Anthropic implementation.);
+  `17ea73f5c` (made upstream's initial-command node test named-pipe-aware and
+  skipped its POSIX-only MAX_CANON cases on win32);
+  `3bd9dcfc9` (made upstream's workspace-delete teardown integration test use
+  named pipes, the platform shell, and platform-native teardown scripts.)
 - **Override policy:** **LOCKED.** Upstream targets macOS/Linux; there is no
   upstream Windows port to defer to. Later, finer-grained W-entries refine and
   extend this base; verify them individually as they are migrated in.
@@ -510,7 +514,8 @@ For **each** patch entry:
 
 - **Commits:** `a87b09083`; `2b68b7c77` (2026-08-04 merge: upstream centralized
   quit cleanup in `runQuitCleanup`; retained the daemon reap in its full-cleanup
-  terminal teardown callback.)
+  terminal teardown callback.); `b72d067c1` (kept `preventDefault()` ahead of
+  every async quit branch so cleanup finishes before Electron exits.)
 - **Override policy:** **LOCKED.** Not Windows-specific in principle (a POSIX
   detached daemon orphans the same way) but gated behind the full-teardown
   branch cross-platform; upstream leaves the daemon alive for reattach.
@@ -604,7 +609,10 @@ For **each** patch entry:
   `bf6fedd63` (2026-07-31 merge: upstream #5925 extracted
   `buildTerminalAgentLaunch` for setup-gated launches. Preserved the resolved
   shell through both `buildAgentCommandString` and `envOverlayPrefix` in the
-  extracted builder.)
+  extracted builder.); `17ea73f5c` (upstream #6210 stages oversized initial
+  commands as a POSIX `.sh` script to avoid MAX_CANON truncation. Kept win32 on
+  direct command delivery: ConPTY has no MAX_CANON and pwsh/cmd cannot source
+  the generated script.)
 - **Override policy:** **LOCKED** (pwsh parser semantics). **Re-introduction
   trigger:** if upstream re-lands a `/bin/sh` + `/dev/tty` launcher-script
   pipeline (#5784 or similar), it can never be the Windows launch path — re-add
@@ -626,12 +634,15 @@ For **each** patch entry:
 - **Where:** `packages/shared/src/agent-prompt-launch.ts` (`buildArgvCommand`,
   `envOverlayPrefix`); the launch shell is resolved in `runTerminalAgent` and
   threaded through `buildAgentCommandString` (both in
-  `packages/host-service/src/trpc/router/agents/agents.ts`).
+  `packages/host-service/src/trpc/router/agents/agents.ts`); oversized initial
+  command staging is win32-guarded in
+  `packages/host-service/src/terminal/terminal.ts`.
 - **Scan for:** new agent-launch quoting that assumes POSIX single-quotes; a new
   launch path that doesn't thread the target shell through; **any change that
   routes `runTerminalAgent` through a `/bin/sh` + `/dev/tty` launcher script
   without a win32 guard** (re-introduction of #5784), or a new launcher-script
-  caller with no win32 branch.
+  caller with no win32 branch; initial-command staging that sends a generated
+  POSIX script to a Windows shell.
 
 ## W21 — pty-daemon `hasRunningForegroundProcess` guarded on win32
 
