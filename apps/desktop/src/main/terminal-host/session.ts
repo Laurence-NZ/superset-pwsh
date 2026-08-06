@@ -482,7 +482,13 @@ export class Session {
 
 		while (this.subprocessStdinQueue.length > 0) {
 			const buf = this.subprocessStdinQueue[0];
+			// write() buffers the chunk even when it returns false, so the chunk
+			// must leave our queue either way — re-sending it after 'drain'
+			// duplicates bytes and misaligns the frame stream (#6153).
 			const canWrite = this.subprocess.stdin.write(buf);
+			this.subprocessStdinQueue.shift();
+			this.subprocessStdinQueuedBytes -= buf.length;
+
 			if (!canWrite) {
 				if (!this.subprocessStdinDrainArmed) {
 					this.subprocessStdinDrainArmed = true;
@@ -493,9 +499,6 @@ export class Session {
 				}
 				return;
 			}
-
-			this.subprocessStdinQueue.shift();
-			this.subprocessStdinQueuedBytes -= buf.length;
 		}
 	}
 

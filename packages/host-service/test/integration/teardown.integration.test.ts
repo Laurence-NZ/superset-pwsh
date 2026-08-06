@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { spawnSync } from "node:child_process";
 import {
 	existsSync,
 	mkdirSync,
@@ -9,7 +8,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Server, type ServerOptions } from "@superset/pty-daemon";
+import { Server } from "@superset/pty-daemon";
 import { runTeardown } from "../../src/runtime/teardown";
 import { disposeDaemonClient } from "../../src/terminal/daemon-client-singleton";
 import {

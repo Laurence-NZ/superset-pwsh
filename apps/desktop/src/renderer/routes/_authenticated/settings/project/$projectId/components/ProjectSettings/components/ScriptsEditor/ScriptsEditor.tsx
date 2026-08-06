@@ -13,6 +13,8 @@ import {
 	isScriptFileImportSupported,
 	SCRIPT_FILE_IMPORT_ACCEPT,
 } from "renderer/lib/script-file-imports";
+import { HighlightText } from "renderer/routes/_authenticated/settings/components/HighlightText";
+import { useSettingsSearchQuery } from "renderer/stores/settings-state";
 import { EXTERNAL_LINKS } from "shared/constants";
 
 interface ScriptsEditorProps {
@@ -170,6 +172,7 @@ function ScriptTextarea({
 type SaveStatus = "idle" | "saving" | "saved";
 
 export function ScriptsEditor({ projectId, className }: ScriptsEditorProps) {
+	const searchQuery = useSettingsSearchQuery();
 	const utils = electronTrpc.useUtils();
 
 	const { data: configData, isLoading } =
@@ -352,7 +355,9 @@ export function ScriptsEditor({ projectId, className }: ScriptsEditorProps) {
 		<div className={cn("space-y-3", className)}>
 			<div className="flex items-center justify-between gap-2">
 				<div className="flex items-center gap-2">
-					<h3 className="text-base font-semibold text-foreground">Scripts</h3>
+					<h3 className="text-base font-semibold text-foreground">
+						<HighlightText text="Scripts" query={searchQuery} />
+					</h3>
 					{saveStatus === "saving" && (
 						<span className="text-xs text-muted-foreground flex items-center gap-1">
 							<span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />

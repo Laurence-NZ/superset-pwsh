@@ -20,13 +20,17 @@ export function stripMdxSyntax(content: string): string {
 	);
 }
 
+// Single source of truth: the license and platform claims here are checked against
+// LICENSE.md and the release targets, so keep them in one place.
+export const PRODUCT_SUMMARY = `${COMPANY.NAME} is a source-available desktop application (Elastic License 2.0) that lets developers run multiple AI coding agents in parallel, each in its own isolated Git worktree. It works with any CLI-based agent including Claude Code, OpenCode, and OpenAI Codex. Agents can work on different branches or features simultaneously without conflicts. ${COMPANY.NAME} is free, does not proxy API calls, supports macOS, offers an experimental Linux AppImage, and supports Windows 10/11 x64 for CLI and source builds.`;
+
 export function buildLlmsHeader(): string[] {
 	return [
 		`# ${COMPANY.NAME}`,
 		"",
 		"> Run 10+ parallel coding agents on your machine",
 		"",
-		`${COMPANY.NAME} is an open-source desktop application that lets developers run multiple AI coding agents in parallel, each in its own isolated Git worktree. It works with any CLI-based agent including Claude Code, OpenCode, and OpenAI Codex. Agents can work on different branches or features simultaneously without conflicts. ${COMPANY.NAME} is free, does not proxy API calls, supports macOS, and supports Windows 10/11 x64 for CLI and source builds. Linux support is in progress.`,
+		PRODUCT_SUMMARY,
 	];
 }
 

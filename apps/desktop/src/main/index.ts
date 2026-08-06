@@ -23,7 +23,7 @@ import {
 	PLATFORM,
 	PROTOCOL_SCHEME,
 } from "shared/constants";
-import { setupAgentHooks } from "./lib/agent-setup";
+import { setupAgentIntegrations } from "./lib/agent-setup";
 import { initAppState } from "./lib/app-state";
 import { requestAppleEventsAccess } from "./lib/apple-events-permission";
 import { isUpdateReadyToInstall, setupAutoUpdater } from "./lib/auto-updater";
@@ -471,9 +471,9 @@ if (!gotTheLock) {
 		);
 
 		try {
-			setupAgentHooks();
+			setupAgentIntegrations();
 		} catch (error) {
-			console.error("[main] Failed to set up agent hooks:", error);
+			console.error("[main] Failed to set up agent integrations:", error);
 		}
 		try {
 			installBundledCliShim();
