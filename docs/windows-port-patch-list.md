@@ -1357,18 +1357,3 @@ notify the user and switch to theirs.
   filtering that also hides development servers launched by an agent.
 - **Symptom if broken:** opening Claude with the browser MCP integration adds a
   misleading `localhost:18765` workspace port chip.
-
-## F18 — Retired active workspace run dot
-
-- **Commits:** `eaefe014e` (added); `7e972b205` (removed).
-- **Override policy:** **RETIRED — do not reapply.** Workspace port chips now
-  provide the useful sidebar activity signal without a second run-only marker.
-- **Invariant:** The v2 sidebar has no dedicated green workspace-run dot and
-  does not derive `isRunActive` from `workspaceRunTerminals`. Run/Stop state
-  remains available on the workspace Run button.
-- **Where:** No active patch files. The retired implementation touched
-  `DashboardSidebarWorkspaceItem` and `useDashboardSidebarData`.
-- **Scan for:** `DashboardSidebarWorkspaceRunIndicator`, sidebar `isRunActive`
-  fields, or merge recovery that restores `eaefe014e`.
-- **Symptom if broken:** workspace rows regain a redundant green dot alongside
-  their detected port chips, increasing sidebar noise and merge surface.
