@@ -37,11 +37,15 @@ export function createFishLikePtySpawner(
 					return;
 				}
 
+				const windowsShell = meta.shell.toLowerCase();
 				const child =
 					process.platform === "win32"
 						? spawnSync(
-								process.env.COMSPEC ?? "cmd.exe",
-								["/d", "/s", "/c", command],
+								meta.shell,
+								windowsShell.endsWith("pwsh.exe") ||
+									windowsShell.endsWith("powershell.exe")
+									? ["-NoProfile", "-Command", command]
+									: ["/d", "/s", "/c", command],
 								{
 									cwd: meta.cwd,
 									env: meta.env,
