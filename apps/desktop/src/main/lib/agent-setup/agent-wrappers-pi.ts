@@ -78,6 +78,8 @@ export function createPiExtension(): void {
 
 /** Removes the wholly Superset-owned pi extension file (signature-gated). */
 export function removePiExtension(): void {
+	if (process.platform === "win32") return;
+
 	removeOwnedFileIfMarked(
 		getPiExtensionPath(),
 		PI_EXTENSION_SIGNATURE,

@@ -50,6 +50,8 @@ export function getAmpPluginContent(): string {
 }
 
 export function createAmpPlugin(): void {
+	if (process.platform === "win32") return;
+
 	const pluginPath = getAmpGlobalPluginPath();
 	fs.mkdirSync(path.dirname(pluginPath), { recursive: true });
 	const changed = writeFileIfChanged(pluginPath, getAmpPluginContent(), 0o644);
@@ -60,6 +62,8 @@ export function createAmpPlugin(): void {
 
 /** Removes the wholly Superset-owned Amp plugin file (signature-gated). */
 export function removeAmpPlugin(): void {
+	if (process.platform === "win32") return;
+
 	removeOwnedFileIfMarked(
 		getAmpGlobalPluginPath(),
 		AMP_PLUGIN_SIGNATURE,

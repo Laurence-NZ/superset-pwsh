@@ -78,10 +78,14 @@ export function getVibeHooksTomlContent(existing: string): string {
  * was in it. No-op when the file does not exist.
  */
 export function removeVibeManagedHooks(): void {
+	if (process.platform === "win32") return;
+
 	removeManagedTomlBlock(VIBE_TOML_SPEC);
 }
 
 export function createVibeHooksToml(): void {
+	if (process.platform === "win32") return;
+
 	ensureManagedTomlBlock(VIBE_TOML_SPEC);
 }
 

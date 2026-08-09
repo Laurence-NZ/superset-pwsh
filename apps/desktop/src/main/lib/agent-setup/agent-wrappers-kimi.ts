@@ -88,6 +88,8 @@ export function getKimiConfigTomlContent(existing: string): string {
  * block was in it. No-op when the file does not exist.
  */
 export function removeKimiManagedHooks(): void {
+	if (process.platform === "win32") return;
+
 	removeManagedTomlBlock(KIMI_TOML_SPEC);
 }
 

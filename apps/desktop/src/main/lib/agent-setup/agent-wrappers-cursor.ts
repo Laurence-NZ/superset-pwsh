@@ -116,6 +116,8 @@ export function createCursorAgentWrapper(): void {
  * user hooks. No-op when the file does not exist.
  */
 export function removeCursorManagedHooks(): void {
+	if (process.platform === "win32") return;
+
 	removeManagedJsonHooks(cursorHooksSpec(getCursorHookScriptPath()));
 }
 

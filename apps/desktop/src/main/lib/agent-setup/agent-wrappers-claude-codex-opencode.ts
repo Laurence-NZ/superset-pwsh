@@ -138,6 +138,8 @@ export function createClaudeSettingsJson(): void {
  * not exist — teardown must never create config files.
  */
 export function removeClaudeManagedHooks(): void {
+	if (process.platform === "win32") return;
+
 	removeManagedJsonHooks(claudeHooksSpec(getNotifyScriptPath()));
 }
 
@@ -220,6 +222,8 @@ export function createCodexHooksJson(): void {
  * user hooks. No-op when the file does not exist.
  */
 export function removeCodexManagedHooks(): void {
+	if (process.platform === "win32") return;
+
 	removeManagedJsonHooks(codexHooksSpec(getNotifyScriptPath()));
 }
 

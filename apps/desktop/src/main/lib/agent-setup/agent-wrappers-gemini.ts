@@ -125,6 +125,8 @@ export function createGeminiWrapper(): void {
  * exist.
  */
 export function removeGeminiManagedHooks(): void {
+	if (process.platform === "win32") return;
+
 	removeManagedJsonHooks(geminiHooksSpec(getGeminiHookScriptPath()));
 }
 

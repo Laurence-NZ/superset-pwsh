@@ -158,6 +158,8 @@ export function getGrokConfigTomlContent(existing: string): string {
  * marker-owned compat block in config.toml. No-op when neither exists.
  */
 export function removeGrokManagedHooks(): void {
+	if (process.platform === "win32") return;
+
 	removeOwnedFileIfMarked(
 		getGrokHooksJsonPath(),
 		"SUPERSET_AGENT_ID=grok",

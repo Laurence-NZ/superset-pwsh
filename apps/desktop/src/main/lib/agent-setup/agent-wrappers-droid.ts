@@ -83,9 +83,13 @@ export function getDroidSettingsJsonContent(
  * exist — teardown must never create config files.
  */
 export function removeDroidManagedHooks(): void {
+	if (process.platform === "win32") return;
+
 	removeManagedJsonHooks(droidHooksSpec(getNotifyScriptPath()));
 }
 
 export function createDroidSettingsJson(): void {
+	if (process.platform === "win32") return;
+
 	ensureManagedJsonHooks(droidHooksSpec(getNotifyScriptPath()));
 }

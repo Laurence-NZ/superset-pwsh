@@ -79,9 +79,13 @@ export function getMastraHooksJsonContent(
  * preserving user hooks. No-op when the file does not exist.
  */
 export function removeMastraManagedHooks(): void {
+	if (process.platform === "win32") return;
+
 	removeManagedJsonHooks(mastraHooksSpec(getNotifyScriptPath()));
 }
 
 export function createMastraHooksJson(): void {
+	if (process.platform === "win32") return;
+
 	ensureManagedJsonHooks(mastraHooksSpec(getNotifyScriptPath()));
 }
