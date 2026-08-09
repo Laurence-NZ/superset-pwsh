@@ -23,7 +23,8 @@ import { useThemeStore } from "renderer/stores";
 interface V2OpenInMenuButtonProps {
 	worktreePath: string;
 	branch: string;
-	projectId: string;
+	/** Null for project-less "session" workspaces (no per-project default app). */
+	projectId: string | null;
 	/**
 	 * Where the button is placed, which drives its chrome:
 	 * - `"sidebar"` (default): filled `bg-secondary` pill; the `/branch` label is
@@ -47,8 +48,8 @@ export function V2OpenInMenuButton({
 	const activeTheme = useThemeStore((state) => state.activeTheme);
 
 	const { app: persistedApp, setApp: persistDefaultApp } =
-		useV2ProjectDefaultApp(projectId);
-	const storedApp: ExternalApp = persistedApp ?? "finder";
+		useV2ProjectDefaultApp(projectId ?? undefined);
+	const resolvedApp: ExternalApp = persistedApp ?? "finder";
 
 	const openInApp = electronTrpc.external.openInApp.useMutation({
 		onSuccess: (_data, variables) => {

@@ -31,6 +31,7 @@ import {
 	getNotificationTitle,
 	getWorkspaceName,
 } from "../lib/notifications/utils";
+import { recordV1TerminalExit } from "../lib/notifications/v1-agent-sessions";
 import {
 	getInitialWindowBounds,
 	loadWindowState,
@@ -250,6 +251,9 @@ export async function MainWindow() {
 				signal?: number;
 				reason?: "killed" | "exited" | "error";
 			}) => {
+				// A goodbye hook just before this death was the agent's SIGHUP
+				// death gasp — keep the session resumable across migration.
+				recordV1TerminalExit(event.paneId);
 				notificationsEmitter.emit(NOTIFICATION_EVENTS.TERMINAL_EXIT, {
 					paneId: event.paneId,
 					exitCode: event.exitCode,

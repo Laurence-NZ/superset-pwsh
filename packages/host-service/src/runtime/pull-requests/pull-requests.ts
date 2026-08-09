@@ -349,7 +349,10 @@ export class PullRequestRuntimeManager {
 			.where(inArray(workspaces.id, workspaceIds))
 			.all();
 
-		const projectIds = [...new Set(rows.map((row) => row.projectId))];
+		// Session workspaces (null projectId) have no remote to sync.
+		const projectIds = [
+			...new Set(rows.map((row) => row.projectId).filter((id) => id !== null)),
+		];
 		await Promise.all(
 			projectIds.map((projectId) =>
 				this.refreshProject(projectId, { bypassCache: true }),
@@ -443,7 +446,14 @@ export class PullRequestRuntimeManager {
 		// sweep's read+write and clobber the newer snapshot. enqueueWorkspaceSync
 		// coalesces — if a sync is already running for a workspace, this just
 		// flips its rerunPending flag.
-		const ids = this.db.select({ id: workspaces.id }).from(workspaces).all();
+		// Session workspaces (null projectId) have no remote and no PRs.
+		// Filtered in JS: the unit-test fakes stub select().from().all()
+		// without a where() builder.
+		const ids = this.db
+			.select({ id: workspaces.id, projectId: workspaces.projectId })
+			.from(workspaces)
+			.all()
+			.filter((row) => row.projectId !== null);
 
 		// Sequential to keep git subprocess concurrency bounded; matches the
 		// original sweep's behavior. refreshProject inside each sync still
@@ -494,6 +504,9 @@ export class PullRequestRuntimeManager {
 			.where(eq(workspaces.id, workspaceId))
 			.get();
 		if (!workspace) return;
+		// Session workspaces (null projectId) have no remote and no PRs; the
+		// GitWatcher still fires for their repos, so gate here too.
+		if (workspace.projectId === null) return;
 
 		const projectId = await this.syncWorkspaceRow(workspace);
 		if (projectId) await this.refreshProject(projectId);
@@ -567,7 +580,10 @@ export class PullRequestRuntimeManager {
 			})
 			.from(workspaces)
 			.all();
-		const projectIds = [...new Set(rows.map((row) => row.projectId))];
+		// Session workspaces (null projectId) have no remote to sync.
+		const projectIds = [
+			...new Set(rows.map((row) => row.projectId).filter((id) => id !== null)),
+		];
 		await Promise.all(
 			projectIds.map((projectId) => this.refreshProject(projectId)),
 		);

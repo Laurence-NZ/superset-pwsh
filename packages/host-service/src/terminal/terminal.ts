@@ -23,11 +23,14 @@ import {
 } from "@superset/shared/terminal-title-scanner";
 import { and, eq, inArray, isNull, ne } from "drizzle-orm";
 import type { Hono } from "hono";
+import { getSupervisor } from "../daemon/index.ts";
 import { isProcessAlive, readPtyDaemonManifest } from "../daemon/manifest.ts";
 import type { HostDb } from "../db/index.ts";
 import { projects, terminalSessions, workspaces } from "../db/schema.ts";
 import type { EventBus } from "../events/index.ts";
 import { portManager } from "../ports/port-manager.ts";
+import { sweepAgentBindingsAfterDaemonLoss } from "../terminal-agents/daemon-loss-sweep.ts";
+import { markTerminalAgentBindingEnded } from "../terminal-agents/persistence.ts";
 import {
 	DaemonClient,
 	type Signal as DaemonSignal,
@@ -238,6 +241,15 @@ const SHELL_READY_TIMEOUT_MS = 15_000;
 const INITIAL_COMMAND_ENTER_DELAY_MS = 500;
 
 /**
+ * Gap between a follow-up send's text and the Enter that submits it. TUI
+ * agents treat bytes arriving together as one paste burst, so an Enter
+ * bundled with the text can be swallowed into the draft instead of
+ * submitting it when the session is busy or slow (#6243). The delay puts
+ * the Enter in its own read, where it can only be a keypress.
+ */
+const FOLLOW_UP_ENTER_DELAY_MS = 500;
+
+/**
  * Byte ceiling for typing an initialCommand directly into the PTY. The
  * shell-ready marker fires from precmd, before the line editor switches the
  * TTY to raw mode; input written in that gap queues under the kernel's
@@ -267,6 +279,8 @@ type ShellReadyState =
 interface TerminalSession {
 	terminalId: string;
 	workspaceId: string;
+	/** Handle for db writes from module-scope handlers (daemon disconnect). */
+	db: HostDb;
 	pty: DaemonPty;
 	cols: number;
 	rows: number;
@@ -330,6 +344,13 @@ interface TerminalSession {
 	 * paste, focus, mouse, etc. that the FIFO can't restore on its own.
 	 */
 	modeTracker: ModeTracker;
+
+	/**
+	 * Tail of the in-flight follow-up send (writeFramedInputToSession).
+	 * Serializes text + delayed-Enter sequences so concurrent sends can't
+	 * interleave inside another send's Enter window.
+	 */
+	followUpWriteChain?: Promise<void>;
 }
 
 /** PTY lifetime is independent of socket lifetime — sockets detach/reattach freely. */
@@ -344,12 +365,36 @@ const sessions = new Map<string, TerminalSession>();
 //
 // We also clear the in-memory sessions map so a stale subscription closure
 // doesn't keep firing for sessions that no longer match daemon state.
+/**
+ * Session ids a live daemon currently owns, or null when no daemon answers
+ * (still respawning, or gone for good). Read via the supervisor rather than
+ * the client singleton so a rebuilt connection isn't required.
+ */
+async function listDaemonAliveSessionIds(): Promise<Set<string> | null> {
+	const organizationId = process.env.ORGANIZATION_ID;
+	if (!organizationId) return null;
+	const list = await getSupervisor().listSessions(organizationId);
+	if (list === null) return null;
+	return new Set(list.filter((info) => info.alive).map((info) => info.id));
+}
+
 onDaemonDisconnect((err) => {
 	const sessionCount = sessions.size;
 	if (sessionCount === 0) return;
 	console.warn(
 		`[terminal] pty-daemon disconnected (${err?.message ?? "no message"}); closing ${sessionCount} terminal WS socket(s) to trigger renderer reconnect`,
 	);
+	// If the ptys died with the daemon, their agent bindings become resume
+	// candidates — but a disconnect can also be an upgrade handoff or socket
+	// blip with sessions surviving for adoption, so the sweep verifies
+	// against a live daemon before marking anything.
+	void sweepAgentBindingsAfterDaemonLoss({
+		candidates: [...sessions.values()].map((session) => ({
+			terminalId: session.terminalId,
+			db: session.db,
+		})),
+		listAliveSessionIds: listDaemonAliveSessionIds,
+	});
 	for (const session of sessions.values()) {
 		cancelShellReady(session);
 		for (const socket of session.sockets) {
@@ -644,6 +689,14 @@ async function waitForAdoptionReplay(session: TerminalSession): Promise<void> {
 }
 
 /**
+ * In-flight headless adoptions by terminal id. Concurrent callers racing an
+ * adoption would each build their own TerminalSession (independent
+ * followUpWriteChain, duplicate daemon subscriptions) — sharing the leader's
+ * attempt keeps session identity unique per terminal.
+ */
+const adoptionsInFlight = new Map<string, Promise<unknown>>();
+
+/**
  * Resolve a session for headless IO. The in-memory map empties on every
  * host-service restart while the detached daemon keeps PTYs alive, so a
  * miss is not "gone" — recover it the same way pane auto-adoption does.
@@ -659,25 +712,44 @@ async function getOrAdoptSession({
 	db: HostDb;
 	eventBus?: EventBus;
 }): Promise<TerminalSession | { error: string }> {
-	const existing = sessions.get(terminalId);
-	if (existing) {
-		if (existing.workspaceId !== workspaceId) {
-			return { error: "Terminal session does not belong to this workspace" };
+	for (;;) {
+		const existing = sessions.get(terminalId);
+		if (existing) {
+			if (existing.workspaceId !== workspaceId) {
+				return { error: "Terminal session does not belong to this workspace" };
+			}
+			return existing;
 		}
-		return existing;
+
+		// Another caller is mid-adoption: wait it out, then re-resolve so
+		// this caller runs its own workspace check (or leads a fresh attempt
+		// if the leader failed).
+		const pending = adoptionsInFlight.get(terminalId);
+		if (pending) {
+			await pending.catch(() => {});
+			continue;
+		}
+
+		const attempt = (async () => {
+			const adopted = await createTerminalSessionInternal({
+				terminalId,
+				workspaceId,
+				db,
+				eventBus,
+				adoptOnly: true,
+			});
+			if ("error" in adopted) return adopted;
+
+			await waitForAdoptionReplay(adopted);
+			return adopted;
+		})();
+		adoptionsInFlight.set(terminalId, attempt);
+		try {
+			return await attempt;
+		} finally {
+			adoptionsInFlight.delete(terminalId);
+		}
 	}
-
-	const adopted = await createTerminalSessionInternal({
-		terminalId,
-		workspaceId,
-		db,
-		eventBus,
-		adoptOnly: true,
-	});
-	if ("error" in adopted) return adopted;
-
-	await waitForAdoptionReplay(adopted);
-	return adopted;
 }
 
 /**
@@ -712,11 +784,38 @@ export async function writeFramedInputToSession({
 		return { error: "Terminal session has exited" };
 	}
 
-	const framed = session.modeTracker.isBracketedPasteActive()
-		? `\x1b[200~${text}\x1b[201~`
-		: text;
-	session.pty.write(submit ? `${framed}\r` : framed);
-	return { success: true };
+	// Serialize sends per session: the delayed Enter opens a window where a
+	// concurrent send's text (even a submit: false draft) would land between
+	// this text and its Enter and get submitted by it.
+	const previous = session.followUpWriteChain ?? Promise.resolve();
+	const task = previous.then(
+		async (): Promise<{ success: true } | { error: string }> => {
+			if (session.exited) {
+				return { error: "Terminal session has exited" };
+			}
+			const framed = session.modeTracker.isBracketedPasteActive()
+				? `\x1b[200~${text}\x1b[201~`
+				: text;
+			if (!submit) {
+				session.pty.write(framed);
+				return { success: true };
+			}
+			if (text.length > 0) {
+				session.pty.write(framed);
+				await new Promise((r) => setTimeout(r, FOLLOW_UP_ENTER_DELAY_MS));
+				if (session.exited) {
+					return { error: "Terminal session has exited" };
+				}
+			}
+			session.pty.write("\r");
+			return { success: true };
+		},
+	);
+	session.followUpWriteChain = task.then(
+		() => undefined,
+		() => undefined,
+	);
+	return task;
 }
 
 /**
@@ -1456,11 +1555,14 @@ export async function createTerminalSessionInternal({
 		};
 	}
 
-	// Derive root path from the workspace's project
+	// Derive root path from the workspace's project. Session workspaces
+	// (null projectId) have no main repo; the session dir is the only root.
 	let rootPath = "";
-	const project = db.query.projects
-		.findFirst({ where: eq(projects.id, workspace.projectId) })
-		.sync();
+	const project = workspace.projectId
+		? db.query.projects
+				.findFirst({ where: eq(projects.id, workspace.projectId) })
+				.sync()
+		: undefined;
 	if (project?.repoPath) {
 		rootPath = project.repoPath;
 	}
@@ -1601,6 +1703,7 @@ export async function createTerminalSessionInternal({
 	const session: TerminalSession = {
 		terminalId,
 		workspaceId,
+		db,
 		pty,
 		cols,
 		rows,
@@ -1739,6 +1842,22 @@ export async function createTerminalSessionInternal({
 					.set({ status: "exited", endedAt: occurredAt })
 					.where(eq(terminalSessions.id, terminalId))
 					.run();
+
+				// The agent died with the pty; unless its SessionEnd hook already
+				// marked a clean detach, keep the binding as a resume candidate.
+				try {
+					markTerminalAgentBindingEnded(
+						db,
+						terminalId,
+						"terminal-exited",
+						occurredAt,
+					);
+				} catch (error) {
+					console.warn(
+						`[terminal] failed to mark agent binding ended for ${terminalId}`,
+						error,
+					);
+				}
 
 				broadcastMessage(session, {
 					type: "exit",
@@ -1953,8 +2072,18 @@ export function registerWorkspaceTerminalRoute({
 				// daemon restart, machine reboot — and always on Windows, where the
 				// detached daemon can't outlive the app). The live shell is gone, so
 				// don't respawn a fresh one over the renderer's painted scrollback:
-				// signal "ended" so the pane tombstones read-only. The user opens a
-				// new tab for a fresh shell.
+				// Any agent bound to the old PTY died with it without a goodbye;
+				// mark its binding ended so it surfaces as a resume candidate.
+				try {
+					markTerminalAgentBindingEnded(db, terminalId, "terminal-exited");
+				} catch (error) {
+					console.warn(
+						`[terminal] failed to mark agent binding ended for ${terminalId}`,
+						error,
+					);
+				}
+				// Signal "ended" so the pane tombstones read-only. The user can
+				// resume the ended agent in a fresh terminal or open a new shell.
 				return { error: SESSION_ENDED_ERROR };
 			};
 

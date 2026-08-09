@@ -1,6 +1,9 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { generateFriendlyBranchName } from "@superset/shared/workspace-launch";
+import {
+	generateFriendlyBranchName,
+	sanitizeUserBranchName,
+} from "@superset/shared/workspace-launch";
 import { TRPCError } from "@trpc/server";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
@@ -11,20 +14,20 @@ import type { HostServiceContext } from "../../../types";
 import { getHostWorkerPool } from "../../../workers/host-worker-pool";
 import { gitFetchBaseRefTask } from "../../../workers/tasks/git";
 import {
+	type CloudShapedWorkspace,
 	getLocalWorkspace,
 	insertLocalWorkspace,
 	toCloudShape,
 } from "../../../workspaces/local-workspace-store";
 import { protectedProcedure, router } from "../../index";
 import {
-	type AgentRunResult,
 	buildTerminalAgentLaunch,
 	isChatAgent,
-	runAgentInWorkspace,
 	validateAgentLaunchEffort,
 } from "../agents";
 import { ensureMainWorkspace } from "../project/utils/ensure-main-workspace";
 import { getHostWorktreeBaseDir } from "../settings/worktree-location";
+import { createSession } from "../workspace-creation/procedures/create-session";
 import { adoptExistingWorktree } from "../workspace-creation/shared/adopt-existing-worktree";
 import {
 	findWorktreeAtPath,
@@ -32,6 +35,11 @@ import {
 	listWorktreeBranches,
 } from "../workspace-creation/shared/branch-search";
 import { startCommandTerminal } from "../workspace-creation/shared/command-terminal";
+import {
+	type AgentLaunchResult,
+	agentLaunchSchema,
+	dispatchSugarAgents,
+} from "../workspace-creation/shared/dispatch-agents";
 import { enablePushAutoSetupRemote } from "../workspace-creation/shared/git-config";
 import { requireLocalProject } from "../workspace-creation/shared/local-project";
 import { startSetupTerminalIfPresent } from "../workspace-creation/shared/setup-terminal";
@@ -66,20 +74,6 @@ import {
 } from "../workspace-creation/utils/resolve-new-branch-start-point";
 import { deduplicateBranchName } from "../workspace-creation/utils/sanitize-branch";
 
-const agentLaunchSchema = z
-	.object({
-		agent: z.string().min(1),
-		prompt: z.string(),
-		attachmentIds: z.array(z.string().uuid()).optional(),
-		model: z.string().optional(),
-		effort: z.string().optional(),
-	})
-	.refine(
-		(value) =>
-			value.prompt.length > 0 || (value.attachmentIds?.length ?? 0) > 0,
-		{ message: "Agent launch requires a prompt or attachments" },
-	);
-
 const createInputSchema = z
 	.object({
 		projectId: z.string(),
@@ -90,6 +84,12 @@ const createInputSchema = z
 		// start. With no prompt, the friendly-random fallback is final.
 		name: z.string().min(1).optional(),
 		branch: z.string().min(1).optional(),
+		// Use the typed branch verbatim instead of namespacing it under the
+		// project branch prefix; a name collision reuses the existing branch
+		// (and its workspace), as with any typed branch. Set when the branch
+		// comes from an external provider (Linear's branchName), whose exact
+		// format the provider autolinks.
+		skipBranchPrefix: z.boolean().optional(),
 		pr: z.number().int().positive().optional(),
 		baseBranch: z.string().min(1).optional(),
 		taskId: z.string().uuid().optional(),
@@ -140,15 +140,9 @@ async function acquireWorkspaceCreateLock(key: string): Promise<() => void> {
 	};
 }
 
-type AgentLaunchResult =
-	| ({ ok: true } & AgentRunResult)
-	| { ok: false; error: string };
-
-type CloudWorkspace = NonNullable<
-	Awaited<
-		ReturnType<HostServiceContext["api"]["v2Workspace"]["getFromHost"]["query"]>
-	>
->;
+// Workspaces have no cloud mirror since local-first (#5731); the host's own
+// cloud-compatible row shape is the response type.
+type CloudWorkspace = CloudShapedWorkspace;
 
 function extractCreateTxid(row: CloudWorkspace): number | null {
 	const txid = (row as { txid?: unknown }).txid;
@@ -437,6 +431,28 @@ async function recordBaseBranchConfig(args: {
 }
 
 /**
+ * Best-effort cloud lookup of the linked task's provider branch name
+ * (Linear's branchName, synced into tasks.branch). Bounded so an offline
+ * host never stalls workspace creation.
+ */
+async function fetchLinkedTaskBranch(
+	ctx: HostServiceContext,
+	taskId: string,
+): Promise<string | undefined> {
+	try {
+		const task = await Promise.race([
+			ctx.api.task.byId.query(taskId),
+			new Promise<null>((resolve) => setTimeout(() => resolve(null), 2_000)),
+		]);
+		const branch = task?.branch?.trim();
+		return branch ? sanitizeUserBranchName(branch) || undefined : undefined;
+	} catch (err) {
+		console.warn("[workspaces.create] linked task branch lookup failed:", err);
+		return undefined;
+	}
+}
+
+/**
  * Fully local registration: the host mints the id and commits the local
  * row — the authoritative and only record; workspaces have no cloud mirror.
  */
@@ -473,35 +489,8 @@ async function registerLocalWorkspace(args: {
 	return toCloudShape(localRow, ctx.organizationId);
 }
 
-async function dispatchSugarAgents(
-	ctx: HostServiceContext,
-	workspaceId: string,
-	launches: z.infer<typeof agentLaunchSchema>[],
-): Promise<AgentLaunchResult[]> {
-	if (launches.length === 0) return [];
-	return Promise.all(
-		launches.map(async (entry) => {
-			try {
-				const result = await runAgentInWorkspace(ctx, {
-					workspaceId,
-					agent: entry.agent,
-					prompt: entry.prompt,
-					attachmentIds: entry.attachmentIds,
-					model: entry.model,
-					effort: entry.effort,
-				});
-				return { ok: true as const, ...result };
-			} catch (err) {
-				return {
-					ok: false as const,
-					error: err instanceof Error ? err.message : String(err),
-				};
-			}
-		}),
-	);
-}
-
 export const workspacesRouter = router({
+	createSession,
 	create: protectedProcedure
 		.input(createInputSchema)
 		.mutation(async ({ ctx, input }) => {
@@ -532,6 +521,7 @@ export const workspacesRouter = router({
 					? generateWorkspaceNamesFromPrompt(
 							composerPrompt,
 							namingAgent ? { db: ctx.db, agent: namingAgent } : undefined,
+							localProject.namingInstructions,
 						).catch((err) => {
 							console.warn("[workspaces.create] AI naming failed", err);
 							return null;
@@ -820,7 +810,16 @@ export const workspacesRouter = router({
 					"[workspaces.create]",
 				);
 			} else {
-				const typedBranch = input.branch?.trim();
+				// A linked task can supply the branch when the caller didn't
+				// pick one (CLI/MCP/automation creates from a task — desktop
+				// surfaces resolve it client-side). Provider branch names are
+				// used exactly, like an explicit skipBranchPrefix create.
+				const taskBranch =
+					!input.branch && input.taskId
+						? await fetchLinkedTaskBranch(ctx, input.taskId)
+						: undefined;
+				const skipBranchPrefix = input.skipBranchPrefix || !!taskBranch;
+				const typedBranch = input.branch?.trim() || taskBranch;
 				let plan: BranchSourcePlan;
 
 				if (typedBranch) {
@@ -841,8 +840,9 @@ export const workspacesRouter = router({
 					resolvedBranch = plan.branch;
 					// Namespace newly-created branches under the configured
 					// prefix. A typed branch that resolves to an existing ref is
-					// checked out as-is and never re-prefixed.
-					if (!plan.usedExistingBranch) {
+					// checked out as-is and never re-prefixed. Provider-supplied
+					// branches (skipBranchPrefix) keep their exact format.
+					if (!plan.usedExistingBranch && !skipBranchPrefix) {
 						const prefix = await resolveProjectBranchPrefix({
 							ctx,
 							project: localProject,
@@ -1169,6 +1169,23 @@ export const workspacesRouter = router({
 				});
 			}
 
+			// Work is starting on the linked task — move it to In Progress.
+			// Best-effort cloud call; creation never blocks on it. A reused
+			// workspace keeps its own task link, so only nudge when this call
+			// actually linked the requested task.
+			if (
+				input.taskId &&
+				(!alreadyExists || workspaceRow.taskId === input.taskId)
+			) {
+				const taskId = input.taskId;
+				void ctx.api.task.start.mutate({ id: taskId }).catch((err) => {
+					console.warn(
+						`[workspaces.create] failed to mark task ${taskId} as started:`,
+						err,
+					);
+				});
+			}
+
 			return {
 				workspace: workspaceRow,
 				terminals: terminalsResult,
@@ -1195,9 +1212,13 @@ export const workspacesRouter = router({
 					message: `Workspace not found: ${input.workspaceId}`,
 				});
 			}
-			const project = ctx.db.query.projects
-				.findFirst({ where: eq(projects.id, local.projectId) })
-				.sync();
+			// AI rename also renames the git branch against the project repo;
+			// session workspaces (null projectId) have neither.
+			const project = local.projectId
+				? ctx.db.query.projects
+						.findFirst({ where: eq(projects.id, local.projectId) })
+						.sync()
+				: undefined;
 			if (!project) {
 				throw new TRPCError({
 					code: "NOT_FOUND",
@@ -1212,6 +1233,7 @@ export const workspacesRouter = router({
 				oldBranchName: local.branch,
 				oldWorkspaceName: local.name || local.branch,
 				prompt: input.prompt,
+				namingInstructions: project.namingInstructions,
 				renameTitle: true,
 				renameBranch: true,
 			}).catch((err) => {

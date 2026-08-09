@@ -5,6 +5,7 @@ export {
 	createAmpWrapper,
 	getAmpGlobalPluginPath,
 	getAmpPluginContent,
+	removeAmpPlugin,
 } from "./agent-wrappers-amp";
 export {
 	buildCodexWrapperExecLine,
@@ -25,6 +26,8 @@ export {
 	getOpenCodePluginPath,
 	OPENCODE_PLUGIN_FILE,
 	OPENCODE_PLUGIN_MARKER,
+	removeClaudeManagedHooks,
+	removeCodexManagedHooks,
 } from "./agent-wrappers-claude-codex-opencode";
 export {
 	buildNotifyHookCommand,
@@ -55,12 +58,14 @@ export {
 	getCursorHookScriptContent,
 	getCursorHookScriptPath,
 	getCursorHooksJsonContent,
+	removeCursorManagedHooks,
 } from "./agent-wrappers-cursor";
 export {
 	createDroidSettingsJson,
 	createDroidWrapper,
 	getDroidSettingsJsonContent,
 	getDroidSettingsJsonPath,
+	removeDroidManagedHooks,
 } from "./agent-wrappers-droid";
 export {
 	createGeminiHookScript,
@@ -72,6 +77,7 @@ export {
 	getGeminiHookScriptPath,
 	getGeminiSettingsJsonContent,
 	getGeminiSettingsJsonPath,
+	removeGeminiManagedHooks,
 } from "./agent-wrappers-gemini";
 export {
 	createGrokConfigToml,
@@ -85,6 +91,7 @@ export {
 	getGrokHooksJsonContent,
 	getGrokHooksJsonPath,
 	getGrokWrapperScript,
+	removeGrokManagedHooks,
 } from "./agent-wrappers-grok";
 export {
 	createKimiConfigToml,
@@ -94,12 +101,14 @@ export {
 	getKimiWrapperScript,
 	KIMI_HOOKS_MARKER_END,
 	KIMI_HOOKS_MARKER_START,
+	removeKimiManagedHooks,
 } from "./agent-wrappers-kimi";
 export {
 	createMastraHooksJson,
 	createMastraWrapper,
 	getMastraGlobalHooksJsonPath,
 	getMastraHooksJsonContent,
+	removeMastraManagedHooks,
 } from "./agent-wrappers-mastra";
 export {
 	createPiExtension,
@@ -107,6 +116,7 @@ export {
 	getPiExtensionPath,
 	PI_EXTENSION_FILE,
 	PI_EXTENSION_MARKER,
+	removePiExtension,
 } from "./agent-wrappers-pi";
 export {
 	createVibeHooksToml,
@@ -114,6 +124,7 @@ export {
 	getVibeHooksTomlContent,
 	getVibeHooksTomlPath,
 	getVibeWrapperScript,
+	removeVibeManagedHooks,
 	VIBE_HOOKS_MARKER_END,
 	VIBE_HOOKS_MARKER_START,
 } from "./agent-wrappers-vibe";

@@ -58,7 +58,9 @@ export const workspaceRouter = router({
 			...toCloudShape(row, ctx.organizationId),
 			worktreePath: row.worktreePath,
 			worktreeExists: existsSync(row.worktreePath),
-			projectName: projectNameById.get(row.projectId) ?? null,
+			projectName: row.projectId
+				? (projectNameById.get(row.projectId) ?? null)
+				: null,
 		}));
 	}),
 
@@ -111,6 +113,17 @@ export const workspaceRouter = router({
 				throw new TRPCError({
 					code: "NOT_FOUND",
 					message: "Workspace not found",
+				});
+			}
+			// Linking a task to a workspace starts work on it — move it to
+			// In Progress. Best-effort cloud call; the update never blocks.
+			if (typeof input.taskId === "string") {
+				const taskId = input.taskId;
+				void ctx.api.task.start.mutate({ id: taskId }).catch((err) => {
+					console.warn(
+						`[workspace.update] failed to mark task ${taskId} as started:`,
+						err,
+					);
 				});
 			}
 			return toCloudShape(updated, ctx.organizationId);
