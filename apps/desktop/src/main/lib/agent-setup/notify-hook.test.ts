@@ -92,15 +92,18 @@ describe("getNotifyScriptContent", () => {
 		expect(script).toContain('["hook_event_name", "hookEventName"]');
 	});
 
-	itBash("exits silently outside Superset terminals even with a payload session id", () => {
-		const result = runNotifyHook(
-			{ hook_event_name: "Stop", session_id: "foreign-session" },
-			{ SUPERSET_TERMINAL_ID: "", SUPERSET_TAB_ID: "" },
-		);
+	itBash(
+		"exits silently outside Superset terminals even with a payload session id",
+		() => {
+			const result = runNotifyHook(
+				{ hook_event_name: "Stop", session_id: "foreign-session" },
+				{ SUPERSET_TERMINAL_ID: "", SUPERSET_TAB_ID: "" },
+			);
 
-		expect(result.exitCode).toBe(0);
-		expect(result.stderr.toString()).toBe("");
-	});
+			expect(result.exitCode).toBe(0);
+			expect(result.stderr.toString()).toBe("");
+		},
+	);
 
 	it("emits the v2 host-service payload with full agent identity", () => {
 		const script = readTemplate("notify-hook.template.sh");
@@ -139,21 +142,26 @@ describe("getNotifyScriptContent", () => {
 		expect(script).toContain("SUPERSET_PANE_ID");
 	});
 
-	itBash("extracts the codex thread-id as the session id on turn completion", () => {
-		const result = runNotifyHook({
-			type: "agent-turn-complete",
-			"thread-id": "019fdecb-edc4-7671-91ba-967a367cda56",
-			"turn-id": "019fdecb-edec-7390-8ccb-50060c49c32f",
-			cwd: "/tmp",
-			"input-messages": ["Reply with exactly: OK"],
-			"last-assistant-message": "OK",
-		});
+	itBash(
+		"extracts the codex thread-id as the session id on turn completion",
+		() => {
+			const result = runNotifyHook({
+				type: "agent-turn-complete",
+				"thread-id": "019fdecb-edc4-7671-91ba-967a367cda56",
+				"turn-id": "019fdecb-edec-7390-8ccb-50060c49c32f",
+				cwd: "/tmp",
+				"input-messages": ["Reply with exactly: OK"],
+				"last-assistant-message": "OK",
+			});
 
-		expect(result.exitCode).toBe(0);
-		const stderr = result.stderr.toString();
-		expect(stderr).toContain("[notify-hook] event=Stop");
-		expect(stderr).toContain("sessionId=019fdecb-edc4-7671-91ba-967a367cda56");
-	});
+			expect(result.exitCode).toBe(0);
+			const stderr = result.stderr.toString();
+			expect(stderr).toContain("[notify-hook] event=Stop");
+			expect(stderr).toContain(
+				"sessionId=019fdecb-edc4-7671-91ba-967a367cda56",
+			);
+		},
+	);
 
 	itBash("prefers an explicit session_id over thread-id", () => {
 		const result = runNotifyHook({

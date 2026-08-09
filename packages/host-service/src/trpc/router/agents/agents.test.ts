@@ -156,9 +156,7 @@ describe("buildAgentCommandString", () => {
 		const config = { ...argvConfig, command: "clear", args: ["&&", "claude"] };
 		expect(
 			buildAgentCommandString(config, "prompt", [], { randomId: RANDOM_ID }),
-		).toBe(
-			"'clear' && 'claude' 'prompt'",
-		);
+		).toBe("'clear' && 'claude' 'prompt'");
 	});
 
 	it("shell-quotes and sanitizes a hostile resume session id", () => {

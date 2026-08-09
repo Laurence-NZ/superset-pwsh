@@ -73,7 +73,6 @@ const {
 	createAmpWrapper,
 	buildCodexWrapperExecLine,
 	buildCopilotWrapperExecLine,
-	buildNotifyHookCommand,
 	buildWindowsWrapperScript,
 	buildWrapperScript,
 	createClaudeSettingsJson,
