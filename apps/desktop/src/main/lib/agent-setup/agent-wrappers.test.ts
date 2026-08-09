@@ -1090,7 +1090,7 @@ describe("agent-wrappers claude settings.json", () => {
 	});
 
 	it("wraps Windows Claude hooks in cmd.exe for Claude's Bash runner", () => {
-		const command = getClaudeManagedHookCommand("win32");
+		const command = getClaudeManagedHookCommand();
 
 		expect(command.startsWith("cmd.exe /d /s /c ")).toBe(true);
 		expect(command.startsWith("if defined")).toBe(false);
