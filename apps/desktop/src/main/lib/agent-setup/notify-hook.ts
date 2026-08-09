@@ -136,10 +136,14 @@ function debug(message) {
 }
 
 async function main() {
+  // Agent hook configs are global. Only dispatch from a Superset terminal;
+  // agent-supplied session identifiers alone must not trigger the app.
+  if (!env("SUPERSET_TERMINAL_ID") && !env("SUPERSET_TAB_ID")) return;
+
   const payload = parsePayload(await readInput());
   const hookSessionId = field(payload, ["session_id", "sessionId"]);
   const resourceId = field(payload, ["resourceId", "resource_id"]);
-  const sessionId = resourceId || hookSessionId;
+  const sessionId = resourceId || hookSessionId || field(payload, ["thread-id", "thread_id"]);
   let eventType = field(payload, ["hook_event_name", "hookEventName"]);
 
   if (!eventType) {
@@ -163,7 +167,7 @@ async function main() {
   if (eventType === "UserPromptSubmit") eventType = "Start";
   if (!eventType) return;
 
-  debug(\`[notify-hook] event=\${eventType} terminalId=\${env("SUPERSET_TERMINAL_ID")} agentId=\${env("SUPERSET_AGENT_ID")} hookSessionId=\${hookSessionId} resourceId=\${resourceId} paneId=\${env("SUPERSET_PANE_ID")} tabId=\${env("SUPERSET_TAB_ID")} workspaceId=\${env("SUPERSET_WORKSPACE_ID")}\`);
+  debug(\`[notify-hook] event=\${eventType} terminalId=\${env("SUPERSET_TERMINAL_ID")} agentId=\${env("SUPERSET_AGENT_ID")} sessionId=\${sessionId} hookSessionId=\${hookSessionId} resourceId=\${resourceId} paneId=\${env("SUPERSET_PANE_ID")} tabId=\${env("SUPERSET_TAB_ID")} workspaceId=\${env("SUPERSET_WORKSPACE_ID")}\`);
 
   if (env("SUPERSET_HOST_AGENT_HOOK_URL") && env("SUPERSET_TERMINAL_ID")) {
     try {
@@ -204,6 +208,8 @@ async function main() {
     hookSessionId,
     resourceId,
     eventType: v1EventTypeFor(eventType),
+    rawEventType: eventType,
+    agentId: env("SUPERSET_AGENT_ID"),
     env: env("SUPERSET_ENV"),
     version: env("SUPERSET_HOOK_VERSION"),
   });

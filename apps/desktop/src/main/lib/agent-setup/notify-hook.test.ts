@@ -46,6 +46,7 @@ function runNotifyNodeHook(input: Record<string, unknown>) {
 			...process.env,
 			SUPERSET_AGENT_ID: "grok",
 			SUPERSET_DEBUG_HOOKS: "1",
+			SUPERSET_TERMINAL_ID: "terminal-test",
 		},
 		stdin: Buffer.from(JSON.stringify(input)),
 		stdout: "pipe",
@@ -225,6 +226,36 @@ describe("getNotifyScriptContent", () => {
 
 		expect(result.exitCode).toBe(0);
 		expect(result.stderr.toString()).toBe("");
+	});
+
+	it("ignores Windows Node hook payloads outside Superset terminals", () => {
+		const result = Bun.spawnSync({
+			cmd: [process.execPath, "-e", getNotifyNodeScriptContent()],
+			env: {
+				...process.env,
+				SUPERSET_DEBUG_HOOKS: "1",
+				SUPERSET_TERMINAL_ID: "",
+				SUPERSET_TAB_ID: "",
+			},
+			stdin: Buffer.from(
+				JSON.stringify({ hook_event_name: "Stop", session_id: "foreign" }),
+			),
+			stdout: "pipe",
+			stderr: "pipe",
+		});
+
+		expect(result.exitCode).toBe(0);
+		expect(result.stderr.toString()).toBe("");
+	});
+
+	it("extracts Codex thread-id in the Windows Node hook", () => {
+		const result = runNotifyNodeHook({
+			type: "agent-turn-complete",
+			"thread-id": "codex-thread-42",
+		});
+
+		expect(result.exitCode).toBe(0);
+		expect(result.stderr.toString()).toContain("sessionId=codex-thread-42");
 	});
 });
 
