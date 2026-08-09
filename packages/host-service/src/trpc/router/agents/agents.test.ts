@@ -6,6 +6,7 @@ import { drizzle } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import type { HostDb } from "../../../db";
 import * as schema from "../../../db/schema";
+import { initTerminalBaseEnv } from "../../../terminal/env";
 import {
 	buildAgentCommandString,
 	buildTerminalAgentLaunch,
@@ -40,6 +41,8 @@ const stdinConfig = {
 
 const RANDOM_ID = "test-1234";
 const DELIMITER = "SUPERSET_PROMPT_test1234";
+
+initTerminalBaseEnv({});
 
 // W7/W20: buildAgentCommandString is the shell-aware launch path threaded
 // through runTerminalAgent. These cover the POSIX quoting/chaining it must keep
