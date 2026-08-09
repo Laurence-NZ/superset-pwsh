@@ -184,13 +184,16 @@ For **each** patch entry:
 - **Commits:** `b930f6267`, `104193b18` (Grok camelCase payload support),
   `978bf43a4` (2026-07-31 merge: upstream #6025 added blocking Grok
   Notification subtypes to the POSIX hook; mirrored the normalization in the
-  Windows Node dispatcher and covered it with native subprocess tests)
+  Windows Node dispatcher and covered it with native subprocess tests);
+  `30d3492f4`, `11ab27237`, `9331743cc` (kept the Windows dispatcher and tests
+  aligned with upstream's Superset-terminal scope, Codex thread ID, and v1
+  lifecycle payload fields.); `ff5531ef4` (linted the merged hook tests.)
 - **Override policy:** **LOCKED** (Windows-specific command construction).
 - **Invariant:** Each managed notify-hook resolves to a Windows-runnable
   entrypoint (`notify.cmd` / Node dispatcher) rather than a bare POSIX `.sh`.
-  The Node dispatcher accepts each managed agent's payload spelling, including
-  Grok's `sessionId` / `hookEventName`. Built in shared agent-wrapper helpers,
-  not per-caller.
+  The Node dispatcher matches the shell hook's Superset-terminal gate and
+  accepts each payload spelling, including Grok camelCase and Codex `thread-id`.
+  Built in shared agent-wrapper helpers, not per-caller.
 - **Where:** `apps/desktop/src/main/lib/agent-setup/agent-wrappers-common.ts`
   (`getManagedNotifyHookCommand` / `buildNotifyHookCommand`);
   `notify-hook.ts`; agent notify-hook setup.
@@ -291,26 +294,21 @@ For **each** patch entry:
 - **Commits:** `86ce750ab` (`createClaudeSettingsJson`), `8e5ba3be9`
   (cursor/codex/gemini/pi), `052e0f837` (`createKimiConfigToml` — new upstream
   injector guarded on the 2026-07-20 main merge), `104193b18`
-  (`createGrokHooksJson` / `createGrokConfigToml`)
+  (`createGrokHooksJson` / `createGrokConfigToml`); `30d3492f4`, `a4594974b`
+  (kept upstream's per-agent setup/teardown user-owned on Windows and extended
+  the guard to Amp, Droid, Mastra, and Vibe.); `ff5531ef4` (removed the merged
+  wrapper test's obsolete helper import.)
 - **Override policy:** **LOCKED** (Windows-specific no-op).
-- **Invariant:** On win32 the dotfile hook injectors are no-ops:
-  `createClaudeSettingsJson`, `createCodexHooksJson`, `createCursorHooksJson`,
-  `createGeminiSettingsJson`, `createPiExtension`, `createKimiConfigToml`,
-  `createGrokHooksJson`, `createGrokConfigToml`. On Windows they'd churn a
-  user-tracked global dotfile every launch (and for the non-Windows-adapted
-  ones, emit a bare POSIX `.sh` command that can't run); the user wires their
-  own per-agent hooks. The paired `create*HookScript` / `create*Wrapper` writers
-  still run (the `SUPERSET_HOME_DIR/hooks/*.sh` scripts must stay). Codex, Kimi,
-  and Grok commands are Windows-adapted through
-  `getManagedNotifyHookCommand` → `notify.cmd`; their skip is user preference,
-  not a command limitation.
-- **Where:** `apps/desktop/src/main/lib/agent-setup/agent-wrappers-claude-codex-opencode.ts`,
-  `agent-wrappers-{cursor,gemini,pi}.ts`, and `agent-wrappers-kimi.ts`.
-  Grok's two injectors live in `agent-wrappers-grok.ts`.
-- **Scan for:** merge changes to these injectors that drop the win32 guard, or a
-  **new** agent's dotfile injector with no win32 guard (droid/mastra/vibe/amp
-  share the latent bug, currently unused). Kimi was the realized case: it landed
-  on the 2026-07-20 merge without a guard and was added here.
+- **Invariant:** On win32, per-agent setup and teardown must not create, edit,
+  or remove global hook config. This covers Amp, Claude, Codex, Cursor, Droid,
+  Gemini, Grok, Kimi, Mastra, Pi, and Vibe. The user owns those files and wires
+  hooks manually. Wrapper and shared hook-script writers still run; they do not
+  mutate agent-owned config. Windows-capable notify commands remain disabled by
+  preference, not by command limitations.
+- **Where:** `apps/desktop/src/main/lib/agent-setup/agent-wrappers-{amp,claude-codex-opencode,cursor,droid,gemini,grok,kimi,mastra,pi,vibe}.ts`.
+- **Scan for:** any win32 path that creates, edits, or removes an agent-global
+  hook file, including new per-agent setup/teardown actions. Keep wrapper and
+  shared hook-script generation enabled.
 - **Verify tests (Windows):** Run the notify-hook and wrapper tests in separate
   Bun processes; `agent-wrappers.test.ts` mocks `./notify-hook` at module scope,
   so combining them contaminates `notify-hook.test.ts`. Filter the wrapper run
@@ -349,7 +347,9 @@ For **each** patch entry:
 
 - **Commits:** `61c892c1e`, `20b3567ee` (2026-07-31 merge: upstream #6036
   added `session-gone` scrollback cleanup. Kept `SESSION_ENDED` exited rows out
-  of that cleanup path so Windows restart tombstones retain their snapshot.)
+  of that cleanup path so Windows restart tombstones retain their snapshot.);
+  `30d3492f4` (marks the dead agent binding resumable while retaining the
+  read-only terminal tombstone instead of upstream's shell respawn.)
 - **Override policy:** **LOCKED**, but **behaviour-changing on all platforms —
   flag if this ever feeds upstream.** macOS/Linux now tombstone read-only after
   a reboot/daemon-crash instead of silently respawning a fresh shell.
@@ -614,7 +614,10 @@ For **each** patch entry:
   extracted builder.); `17ea73f5c` (upstream #6210 stages oversized initial
   commands as a POSIX `.sh` script to avoid MAX_CANON truncation. Kept win32 on
   direct command delivery: ConPTY has no MAX_CANON and pwsh/cmd cannot source
-  the generated script.)
+  the generated script.); `30d3492f4` (threads upstream's resume-session options
+  and the resolved terminal shell through the same launch builder.); `ab473e6c7`
+  (initializes the terminal environment snapshot in the merged launch-builder
+  tests.); `ff5531ef4` (formatted the merged terminal-launch tests.)
 - **Override policy:** **LOCKED** (pwsh parser semantics). **Re-introduction
   trigger:** if upstream re-lands a `/bin/sh` + `/dev/tty` launcher-script
   pipeline (#5784 or similar), it can never be the Windows launch path — re-add
@@ -860,7 +863,8 @@ For **each** patch entry:
 
 ## W29 — Windows agent-CLI workspace naming runs through PowerShell
 
-- **Commits:** `e550791aa`.
+- **Commits:** `e550791aa`; `30d3492f4` (preserved shell-aware invocation while
+  adding upstream's per-project naming instructions.)
 - **Override policy:** **OVERRIDABLE.** If upstream makes the agent-CLI naming
   fallback shell-agnostic (resolves a platform shell with shell-aware quoting),
   adopt its version and drop this patch.
@@ -1017,6 +1021,21 @@ For **each** patch entry:
 
 ---
 
+## W33 — Keep the Linear launcher examples in parity
+
+- **Commits:** `59ec70842`.
+- **Override policy:** **OVERRIDABLE.** Fold into upstream when its Windows
+  recipe includes every workspace-creation flag used by the POSIX recipe.
+- **Invariant:** The PowerShell and POSIX Linear launchers pass the same
+  behavior-affecting `superset workspaces create` flags.
+- **Where:** `apps/docs/content/docs/use-with-linear.mdx`.
+- **Scan for:** changes to either launcher command without the equivalent change
+  in the other platform's example.
+- **Symptom if broken:** Linear-created Windows workspace branches receive a
+  project prefix and no longer exactly match Linear's branch name.
+
+---
+
 # §2 — Features & fixes
 
 Bug fixes and new functionality this branch carries that are **not** part of the
@@ -1059,7 +1078,8 @@ notify the user and switch to theirs.
 
 - **Commits:** `08894008e`; `2b68b7c77` (2026-08-04 merge: upstream moved
   cleanup-state reads into a worker task; re-applied the deleted-upstream guard
-  in the worker implementation.)
+  in the worker implementation.); `30d3492f4` (combined the guard with
+  upstream's project-less-session initial-commit allowance.)
 - **Override policy:** **OVERRIDABLE** (genuine bug fix, not Windows-specific).
   If upstream fixes the same false warning, adopt theirs.
 - **What:** the branch-sync / cleanup warning no longer flags "unpushed commits"
@@ -1272,7 +1292,8 @@ notify the user and switch to theirs.
 
 ## F13 — v2 OPEN_IN_APP hotkey registered at workspace level, not in the button
 
-- **Commits:** `e5d30ad43`
+- **Commits:** `e5d30ad43`; `30d3492f4`, `c4f5585d2` (kept the workspace-level
+  registration and normalized project-less sessions' nullable project ID.)
 - **Override policy:** **OVERRIDABLE — expected to be fixed upstream; prefer
   theirs on sight.** This is a stopgap for a plain bug: upstream `616bb6796`
   (#5824) moved the Open-in button into the sidebar but left the hotkey
@@ -1314,7 +1335,9 @@ notify the user and switch to theirs.
   `@[240px]` gate. `"sidebar"` (default) keeps the original filled pill.);
   `43cc247a6` (exact parity tweaks: added `shrink-0` to the wrapper — the run
   button has it, so a tight tab bar no longer squishes the Open-in button — and
-  dropped a no-op `justify-center` the run button doesn't carry)
+  dropped a no-op `justify-center` the run button doesn't carry);
+  `30d3492f4`, `2e53fc46c` (preserved the tab-bar variant while accepting
+  project-less workspaces and keeping one resolved app-state path.)
 - **Override policy:** **OVERRIDABLE — stopgap, expect this area to move again.**
   Preference, not a bug: upstream `616bb6796` (#5824) deliberately moved the
   button into the sidebar's PR action header; this fork wants it always reachable
