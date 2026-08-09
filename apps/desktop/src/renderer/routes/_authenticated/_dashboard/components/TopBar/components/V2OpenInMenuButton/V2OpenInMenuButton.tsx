@@ -49,7 +49,7 @@ export function V2OpenInMenuButton({
 
 	const { app: persistedApp, setApp: persistDefaultApp } =
 		useV2ProjectDefaultApp(projectId ?? undefined);
-	const resolvedApp: ExternalApp = persistedApp ?? "finder";
+	const storedApp: ExternalApp = persistedApp ?? "finder";
 
 	const openInApp = electronTrpc.external.openInApp.useMutation({
 		onSuccess: (_data, variables) => {
