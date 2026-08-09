@@ -26,7 +26,7 @@ export function useV2OpenInAppHotkey(workspaceId: string): void {
 	const isLocalWorkspace = workspace !== null && workspace.hostId === machineId;
 
 	const { app: persistedApp, setApp: persistDefaultApp } =
-		useV2ProjectDefaultApp(workspace?.projectId);
+		useV2ProjectDefaultApp(workspace?.projectId ?? undefined);
 	const storedApp: ExternalApp = persistedApp ?? "finder";
 	const resolvedApp: ExternalApp = getAppOption(storedApp)?.id ?? "finder";
 
