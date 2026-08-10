@@ -398,9 +398,8 @@ export function attachToContainer(
  * less) — is captured; otherwise the only snapshot is the stale one from the
  * last detach, which predates the alt-screen and restores blank.
  */
-export function persistRuntime(runtime: TerminalRuntime) {
-	persistBuffer(runtime.terminalId, runtime.serializeAddon);
-	persistDimensions(runtime.terminalId, runtime.lastCols, runtime.lastRows);
+export function persistRuntime(runtime: TerminalRuntime): boolean {
+	return tryPersistRuntimeState(runtime);
 }
 
 /** Returns whether the buffer snapshot was persisted, so callers can keep

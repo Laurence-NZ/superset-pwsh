@@ -209,6 +209,48 @@ describe("terminalRuntimeRegistry eviction cleanup", () => {
 		expect(fakeStorage.values.has(`terminal-dims:${terminalId}`)).toBe(false);
 	});
 
+	test("persists the matching sequence anchor with hide snapshots", () => {
+		const terminalId = "hide-snapshot-anchor";
+		const key = `${terminalId}\u0000${terminalId}`;
+		const flushSync = mock(() => {});
+		const entries = (
+			terminalRuntimeRegistry as unknown as {
+				entries: Map<string, unknown>;
+			}
+		).entries;
+		entries.set(key, {
+			terminalId,
+			instanceId: terminalId,
+			runtime: {
+				terminalId,
+				serializeAddon: { serialize: () => "latest scrollback" },
+				lastCols: 120,
+				lastRows: 32,
+				gate: { pending: 0 },
+			},
+			transport: {
+				_writeCoalescer: { flushSync },
+				seqAnchor: { epoch: "epoch-1", seq: 42 },
+				_seqEverSynced: true,
+				_hasReceivedBytes: true,
+			},
+		});
+
+		try {
+			terminalRuntimeRegistry.persistAll();
+
+			expect(flushSync).toHaveBeenCalledTimes(1);
+			expect(fakeStorage.values.get(`terminal-buffer:${terminalId}`)).toBe(
+				"latest scrollback",
+			);
+			expect(fakeStorage.values.get(`terminal-seq:${terminalId}`)).toBe(
+				JSON.stringify({ epoch: "epoch-1", seq: 42 }),
+			);
+		} finally {
+			entries.delete(key);
+		}
+	});
+
 	test("release keeps runtimes on persist failure and warns once per terminal", () => {
 		const terminalIds = ["release-failure-a", "release-failure-b"];
 		const warnSpy = spyOn(console, "warn").mockImplementation(() => {});

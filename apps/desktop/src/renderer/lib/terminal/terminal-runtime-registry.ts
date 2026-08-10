@@ -590,7 +590,18 @@ class TerminalRuntimeRegistryImpl {
 	 */
 	persistAll(): void {
 		for (const entry of this.entries.values()) {
-			if (entry.runtime) persistRuntime(entry.runtime);
+			if (!entry.runtime) continue;
+			// Keep the hide/close snapshot paired with the same stream position,
+			// just like detach and release. Otherwise a newer buffer can restore
+			// beside an older seq anchor and request the wrong catch-up suffix.
+			entry.transport._writeCoalescer?.flushSync();
+			const snapshotPersisted = persistRuntime(entry.runtime);
+			persistSeqAnchor(
+				entry.terminalId,
+				snapshotPersisted && entry.runtime.gate.pending === 0
+					? getPersistableSeqAnchor(entry.transport)
+					: null,
+			);
 		}
 	}
 
