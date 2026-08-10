@@ -107,7 +107,9 @@ For **each** patch entry:
   `3bd9dcfc9` (made upstream's workspace-delete teardown integration test use
   named pipes, the platform shell, and platform-native teardown scripts.);
   `530387606` (made the shared fake PTY execute Windows writes through the
-  session's actual cmd/PowerShell shell.)
+  session's actual cmd/PowerShell shell.);
+  `b419448f1` (kept the daemon integration test's Windows socket helper while
+  retaining upstream's explicit Node crypto import.)
 - **Override policy:** **LOCKED.** Upstream targets macOS/Linux; there is no
   upstream Windows port to defer to. Later, finer-grained W-entries refine and
   extend this base; verify them individually as they are migrated in.
