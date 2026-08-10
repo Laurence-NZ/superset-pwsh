@@ -15,7 +15,7 @@
 import * as childProcess from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "../../..");
@@ -153,7 +153,7 @@ function main(): never {
 		electronBin,
 		[
 			"--import",
-			tsxLoader,
+			pathToFileURL(tsxLoader).href,
 			"--test",
 			"--test-force-exit",
 			"--test-reporter=spec",
