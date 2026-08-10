@@ -378,7 +378,7 @@ For **each** patch entry:
 
 ## W13 — Snapshot live terminal buffers on app hide/close
 
-- **Commits:** `61c892c1e`
+- **Commits:** `61c892c1e`, `775c16834`
 - **Override policy:** **LOCKED** (companion to W12).
 - **Why:** `persistBuffer` previously ran only on tab/workspace detach, so the
   read-only restore of a full-screen TUI (Claude Code, vim, less — which render
@@ -387,12 +387,16 @@ For **each** patch entry:
 - **Invariant:** The runtime registry calls `persistAll()` on `pagehide` and on
   `visibilitychange`→hidden, serializing every live runtime (serialize addon
   includes the alternate buffer) plus its dimensions, so the W12 tombstone shows
-  the actual last on-screen frame. (Graceful quit/app-switch covered; a hard
-  force-kill falls back to the last hidden-state snapshot.)
+  the actual last on-screen frame. The snapshot and its exactly-once stream
+  sequence anchor are persisted as one coherent pair after pending output is
+  flushed; a busy parser or failed snapshot clears the anchor. (Graceful
+  quit/app-switch covered; a hard force-kill falls back to the last hidden-state
+  snapshot.)
 - **Where:** `apps/desktop/src/renderer/lib/terminal/terminal-runtime-registry.ts`
   (`persistAll`); `.../terminal-runtime.ts`.
-- **Scan for:** removal of the `pagehide` / `visibilitychange` persist hooks, or
-  a refactor that reverts persistence to detach-only.
+- **Scan for:** removal of the `pagehide` / `visibilitychange` persist hooks; a
+  refactor that reverts persistence to detach-only; or a hide/close snapshot
+  written without flushing output and pairing `getPersistableSeqAnchor`.
 - **Testing caveat — judge restore fidelity in a packaged build, not dev.** In
   `dev:desktop`, `electron-vite dev --watch` restarts the renderer/host-service
   on HMR, so `persistAll` may not fire cleanly at close and a stale normal-buffer
