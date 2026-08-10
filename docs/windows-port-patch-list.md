@@ -1038,14 +1038,17 @@ For **each** patch entry:
 
 ## W34 — Retry managed folder deletion after terminal shutdown
 
-- **Commits:** `f279800a5`.
+- **Commits:** `f279800a5`; `55efa4998` (releases server-owned git watches and
+  client filesystem subscriptions before directory removal.)
 - **Override policy:** **OVERRIDABLE.** Adopt upstream when session-folder
   deletion runs off-loop with equivalent transient-lock retries.
 - **Invariant:** Session folders and residual worktree directories use the same
   recursive removal task: five retries with a 100 ms delay. Session deletion
   must not synchronously remove a potentially large tree on the host event loop.
+  All workspace watcher layers are released before either removal path begins.
 - **Where:** `packages/host-service/src/workers/tasks/filesystem.ts` and the
-  session branch in `trpc/router/workspace-cleanup/workspace-cleanup.ts`.
+  session branch in `trpc/router/workspace-cleanup/workspace-cleanup.ts`;
+  `events/git-watcher.ts`; `events/event-bus.ts`.
 - **Scan for:** direct recursive `rm` calls in either workspace deletion path,
   or removal of the filesystem task from the host-worker registry.
 - **Symptom if broken:** deleting a Session intermittently fails on Windows with
