@@ -15,11 +15,43 @@ import {
  * without spinning a real `fs.watch` over a scratch repo.
  */
 interface GitWatcherInternals {
+	debounceTimers: Map<string, ReturnType<typeof setTimeout>>;
+	pendingBatches: Map<string, unknown>;
+	watched: Map<
+		string,
+		{
+			watcher: { close: () => void };
+			disposeWorktreeWatch: () => void;
+		}
+	>;
 	handleGitDirEvent(workspaceId: string, filename: string | null): void;
 	addWorktreePaths(workspaceId: string, paths: Iterable<string>): void;
 	getOrCreateBatch(workspaceId: string): unknown;
 	scheduleFlush(workspaceId: string): void;
 }
+
+test("unwatchWorkspace releases both watcher layers and pending state", () => {
+	const watcher = createWatcher();
+	const state = internals(watcher);
+	const close = jest.fn();
+	const disposeWorktreeWatch = jest.fn();
+	const timer = setTimeout(() => {}, 60_000);
+
+	state.debounceTimers.set("workspace-1", timer);
+	state.pendingBatches.set("workspace-1", {});
+	state.watched.set("workspace-1", {
+		watcher: { close },
+		disposeWorktreeWatch,
+	});
+
+	watcher.unwatchWorkspace("workspace-1");
+
+	expect(close).toHaveBeenCalledTimes(1);
+	expect(disposeWorktreeWatch).toHaveBeenCalledTimes(1);
+	expect(state.debounceTimers.has("workspace-1")).toBe(false);
+	expect(state.pendingBatches.has("workspace-1")).toBe(false);
+	expect(state.watched.has("workspace-1")).toBe(false);
+});
 
 function createWatcher(): GitWatcher {
 	// `start()` is never called, so the dispatch methods under test never touch

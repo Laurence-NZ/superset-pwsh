@@ -176,6 +176,21 @@ export class GitWatcher {
 		};
 	}
 
+	unwatchWorkspace(workspaceId: string): void {
+		const timer = this.debounceTimers.get(workspaceId);
+		if (timer) {
+			clearTimeout(timer);
+			this.debounceTimers.delete(workspaceId);
+		}
+		this.pendingBatches.delete(workspaceId);
+
+		const entry = this.watched.get(workspaceId);
+		if (!entry) return;
+		entry.watcher.close();
+		entry.disposeWorktreeWatch();
+		this.watched.delete(workspaceId);
+	}
+
 	close(): void {
 		this.closed = true;
 		if (this.rescanTimer) {
@@ -292,11 +307,9 @@ export class GitWatcher {
 		const currentIds = new Set(rows.map((r) => r.id));
 
 		// Remove watchers for workspaces that no longer exist
-		for (const [id, entry] of this.watched) {
+		for (const id of this.watched.keys()) {
 			if (!currentIds.has(id)) {
-				entry.watcher.close();
-				entry.disposeWorktreeWatch();
-				this.watched.delete(id);
+				this.unwatchWorkspace(id);
 			}
 		}
 

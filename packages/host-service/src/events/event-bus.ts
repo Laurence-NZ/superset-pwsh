@@ -143,6 +143,13 @@ export class EventBus {
 		}
 	}
 
+	unwatchWorkspace(workspaceId: string): void {
+		this.gitWatcher.unwatchWorkspace(workspaceId);
+		for (const state of this.clients.values()) {
+			this.stopFsWatch(state, workspaceId);
+		}
+	}
+
 	private broadcast(message: ServerMessage): void {
 		// One bad socket must not block fan-out to the rest. Drop dead sockets
 		// rather than logging on every broadcast forever.

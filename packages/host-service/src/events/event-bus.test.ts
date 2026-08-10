@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, jest } from "bun:test";
 import type { DetectedPort } from "@superset/port-scanner";
 import type { HostDb } from "../db";
 import { portManager } from "../ports/port-manager";
@@ -69,4 +69,41 @@ describe("EventBus port events", () => {
 		portManager.emit("port:add", port);
 		expect(sentMessages).toHaveLength(2);
 	});
+});
+
+it("releases server and client filesystem watches for a workspace", () => {
+	const unwatchGit = jest.fn();
+	const disposeClientWatch = jest.fn();
+	const eventBus = new EventBus({
+		db: {} as unknown as HostDb,
+		filesystem: {
+			resolveWorkspaceRoot: () => "C:\\sessions\\example",
+			getServiceForWorkspace: () => ({
+				watchPath: () => ({
+					[Symbol.asyncIterator]: () => ({
+						next: () => new Promise(() => {}),
+						return: async () => {
+							disposeClientWatch();
+							return { done: true, value: undefined };
+						},
+					}),
+				}),
+			}),
+		} as unknown as WorkspaceFilesystemManager,
+		gitWatcher: {
+			onChanged: () => () => {},
+			unwatchWorkspace: unwatchGit,
+		} as unknown as GitWatcher,
+	});
+	const socket = { readyState: 1, send() {}, close() {} };
+
+	eventBus.handleOpen(socket);
+	eventBus.handleMessage(
+		socket,
+		JSON.stringify({ type: "fs:watch", workspaceId: "workspace-1" }),
+	);
+	eventBus.unwatchWorkspace("workspace-1");
+
+	expect(unwatchGit).toHaveBeenCalledWith("workspace-1");
+	expect(disposeClientWatch).toHaveBeenCalledTimes(1);
 });

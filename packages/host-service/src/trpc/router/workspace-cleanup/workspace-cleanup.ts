@@ -306,6 +306,11 @@ async function runDestroy(
 		warnings.push(`Failed to dispose terminal sessions: ${message}`);
 	}
 
+	// Release both server-owned git watches and client-requested filesystem
+	// watches before removing the directory. On Windows, an open watcher handle
+	// makes the final rmdir fail with EBUSY even after every terminal has exited.
+	ctx.eventBus.unwatchWorkspace(input.workspaceId);
+
 	// 2b. Worktree. Double-force unlocks the rare locked-worktree case and
 	//     clears stale metadata when the directory was manually removed.
 	//     Runs in the worker pool: the removal is a recursive delete of the
