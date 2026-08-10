@@ -21,7 +21,7 @@ interface GitWatcherInternals {
 		string,
 		{
 			watcher: { close: () => void };
-			disposeWorktreeWatch: () => void;
+			disposeWorktreeWatch: () => Promise<void>;
 		}
 	>;
 	handleGitDirEvent(workspaceId: string, filename: string | null): void;
@@ -30,11 +30,17 @@ interface GitWatcherInternals {
 	scheduleFlush(workspaceId: string): void;
 }
 
-test("unwatchWorkspace releases both watcher layers and pending state", () => {
+test("unwatchWorkspace waits for both watcher layers to be released", async () => {
 	const watcher = createWatcher();
 	const state = internals(watcher);
 	const close = jest.fn();
-	const disposeWorktreeWatch = jest.fn();
+	let releaseWorktreeWatch: (() => void) | undefined;
+	const worktreeWatchReleased = new Promise<void>((resolve) => {
+		releaseWorktreeWatch = resolve;
+	});
+	const disposeWorktreeWatch = jest.fn(async () => {
+		await worktreeWatchReleased;
+	});
 	const timer = setTimeout(() => {}, 60_000);
 
 	state.debounceTimers.set("workspace-1", timer);
@@ -44,10 +50,17 @@ test("unwatchWorkspace releases both watcher layers and pending state", () => {
 		disposeWorktreeWatch,
 	});
 
-	watcher.unwatchWorkspace("workspace-1");
+	let finished = false;
+	const unwatchPromise = watcher.unwatchWorkspace("workspace-1").then(() => {
+		finished = true;
+	});
 
 	expect(close).toHaveBeenCalledTimes(1);
 	expect(disposeWorktreeWatch).toHaveBeenCalledTimes(1);
+	expect(finished).toBe(false);
+	releaseWorktreeWatch?.();
+	await unwatchPromise;
+	expect(finished).toBe(true);
 	expect(state.debounceTimers.has("workspace-1")).toBe(false);
 	expect(state.pendingBatches.has("workspace-1")).toBe(false);
 	expect(state.watched.has("workspace-1")).toBe(false);

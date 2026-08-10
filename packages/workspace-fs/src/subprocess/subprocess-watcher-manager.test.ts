@@ -96,6 +96,31 @@ describe("SubprocessWatcherManager", () => {
 		expect(child.killed).toBe(true);
 	});
 
+	it("waits for the child to release a native watch before unsubscribing", async () => {
+		const { manager, spawned } = makeManager();
+		const subscribePromise = manager.subscribe(
+			{ absolutePath: "/repo" },
+			() => {},
+		);
+		await tick();
+		const child = nonNull(spawned[0], "child");
+		const id = child.firstSubscribeId();
+		child.reply({ type: "subscribed", id });
+		const unsubscribe = await subscribePromise;
+
+		let finished = false;
+		const unsubscribePromise = unsubscribe().then(() => {
+			finished = true;
+		});
+		expect(child.sent).toContainEqual({ type: "unsubscribe", id });
+		expect(finished).toBe(false);
+
+		child.reply({ type: "unsubscribed", id });
+		await unsubscribePromise;
+		expect(finished).toBe(true);
+		expect(child.sent.at(-1)).toEqual({ type: "close" });
+	});
+
 	it("respawns and re-subscribes after a crash, nudging the listener to refetch", async () => {
 		const { manager, spawned } = makeManager();
 		const batches: Array<{ events: Array<{ kind: string }> }> = [];

@@ -117,7 +117,7 @@ interface WatchedWorkspace {
 	worktreePath: string;
 	gitDir: string;
 	watcher: FSWatcher;
-	disposeWorktreeWatch: () => void;
+	disposeWorktreeWatch: () => Promise<void>;
 }
 
 /**
@@ -177,7 +177,7 @@ export class GitWatcher {
 		};
 	}
 
-	unwatchWorkspace(workspaceId: string): void {
+	async unwatchWorkspace(workspaceId: string): Promise<void> {
 		const timer = this.debounceTimers.get(workspaceId);
 		if (timer) {
 			clearTimeout(timer);
@@ -188,8 +188,8 @@ export class GitWatcher {
 		const entry = this.watched.get(workspaceId);
 		if (!entry) return;
 		entry.watcher.close();
-		entry.disposeWorktreeWatch();
 		this.watched.delete(workspaceId);
+		await entry.disposeWorktreeWatch();
 	}
 
 	close(): void {
@@ -311,7 +311,7 @@ export class GitWatcher {
 		// Remove watchers for workspaces that no longer exist
 		for (const id of this.watched.keys()) {
 			if (!currentIds.has(id)) {
-				this.unwatchWorkspace(id);
+				await this.unwatchWorkspace(id);
 			}
 		}
 
@@ -392,7 +392,7 @@ export class GitWatcher {
 	private startWorktreeWatch(
 		workspaceId: string,
 		worktreePath: string,
-	): () => void {
+	): () => Promise<void> {
 		let disposed = false;
 		let iterator: AsyncIterator<{ events: FsWatchEvent[] }> | null = null;
 
@@ -407,7 +407,7 @@ export class GitWatcher {
 				workspaceId,
 				error,
 			});
-			return () => {};
+			return async () => {};
 		}
 
 		void (async () => {
@@ -442,10 +442,11 @@ export class GitWatcher {
 			}
 		})();
 
-		return () => {
+		return async () => {
 			disposed = true;
-			void iterator?.return?.().catch(() => {});
+			const currentIterator = iterator;
 			iterator = null;
+			await currentIterator?.return?.().catch(() => {});
 		};
 	}
 }
