@@ -109,7 +109,9 @@ For **each** patch entry:
   `530387606` (made the shared fake PTY execute Windows writes through the
   session's actual cmd/PowerShell shell.);
   `b419448f1` (kept the daemon integration test's Windows socket helper while
-  retaining upstream's explicit Node crypto import.)
+  retaining upstream's explicit Node crypto import.);
+  `a9bc07294` (made upstream's trustd temp-path and daemon socket-path tests
+  accept native Windows paths.)
 - **Override policy:** **LOCKED.** Upstream targets macOS/Linux; there is no
   upstream Windows port to defer to. Later, finer-grained W-entries refine and
   extend this base; verify them individually as they are migrated in.
@@ -1045,7 +1047,9 @@ For **each** patch entry:
 ## W34 — Retry managed folder deletion after terminal shutdown
 
 - **Commits:** `f279800a5`; `55efa4998` (releases server-owned git watches and
-  client filesystem subscriptions before directory removal.)
+  client filesystem subscriptions before directory removal.); `ff5a0b0da`
+  (keeps the cleanup unit-test event bus aligned with the watcher-release
+  contract.)
 - **Override policy:** **OVERRIDABLE.** Adopt upstream when session-folder
   deletion runs off-loop with equivalent transient-lock retries.
 - **Invariant:** Session folders and residual worktree directories use the same
