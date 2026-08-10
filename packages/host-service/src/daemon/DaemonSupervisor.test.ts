@@ -1340,6 +1340,9 @@ describe("ptyDaemonSocketPath", () => {
 	const ORG = "org-socket-path";
 	const legacyPath = () => {
 		const shortId = createHash("sha256").update(ORG).digest("hex").slice(0, 12);
+		if (process.platform === "win32") {
+			return `\\\\.\\pipe\\superset-ptyd-${shortId}`;
+		}
 		return path.join(os.tmpdir(), `superset-ptyd-${shortId}.sock`);
 	};
 
