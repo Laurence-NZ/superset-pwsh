@@ -10,6 +10,7 @@
 
 import { strict as assert } from "node:assert";
 import * as childProcess from "node:child_process";
+import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as net from "node:net";
 import * as os from "node:os";
