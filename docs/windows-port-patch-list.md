@@ -1036,6 +1036,23 @@ For **each** patch entry:
 
 ---
 
+## W34 — Retry managed folder deletion after terminal shutdown
+
+- **Commits:** `f279800a5`.
+- **Override policy:** **OVERRIDABLE.** Adopt upstream when session-folder
+  deletion runs off-loop with equivalent transient-lock retries.
+- **Invariant:** Session folders and residual worktree directories use the same
+  recursive removal task: five retries with a 100 ms delay. Session deletion
+  must not synchronously remove a potentially large tree on the host event loop.
+- **Where:** `packages/host-service/src/workers/tasks/filesystem.ts` and the
+  session branch in `trpc/router/workspace-cleanup/workspace-cleanup.ts`.
+- **Scan for:** direct recursive `rm` calls in either workspace deletion path,
+  or removal of the filesystem task from the host-worker registry.
+- **Symptom if broken:** deleting a Session intermittently fails on Windows with
+  `EPERM`, `EBUSY`, or `ENOTEMPTY` immediately after its terminal is closed.
+
+---
+
 # §2 — Features & fixes
 
 Bug fixes and new functionality this branch carries that are **not** part of the
