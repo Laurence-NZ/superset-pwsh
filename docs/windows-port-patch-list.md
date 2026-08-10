@@ -111,7 +111,9 @@ For **each** patch entry:
   `b419448f1` (kept the daemon integration test's Windows socket helper while
   retaining upstream's explicit Node crypto import.);
   `a9bc07294` (made upstream's trustd temp-path and daemon socket-path tests
-  accept native Windows paths.)
+  accept native Windows paths.);
+  `166efbb0e` (passes the Electron-as-Node tsx loader to Node's `--import` as a
+  `file://` URL so Windows drive-letter paths are not parsed as URL schemes.)
 - **Override policy:** **LOCKED.** Upstream targets macOS/Linux; there is no
   upstream Windows port to defer to. Later, finer-grained W-entries refine and
   extend this base; verify them individually as they are migrated in.
