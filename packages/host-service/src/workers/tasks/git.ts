@@ -3,7 +3,6 @@
 // host-service event loop. Credential env is resolved in-process (it needs
 // the credential provider) and crosses as plain data.
 
-import { rm } from "node:fs/promises";
 import {
 	type ResolvedGitInfo,
 	readGitIdentity,
@@ -23,6 +22,7 @@ import {
 	parseWorktreeList,
 } from "../../trpc/router/workspace-creation/shared/worktree-list.ts";
 import { defineWorkerTask } from "../define-worker-task.ts";
+import { removeDirectoryWithRetries } from "./filesystem.ts";
 
 export interface GitTaskEnv {
 	[key: string]: string;
@@ -179,12 +179,7 @@ export const gitWorktreeRemoveTask = defineWorkerTask<
 			// Git can unregister a worktree on Windows while leaving its directory
 			// behind when junctions or transient file locks block deletion. Node's
 			// recursive removal unlinks junctions safely and retries those locks.
-			await rm(worktreePath, {
-				recursive: true,
-				force: true,
-				maxRetries: 5,
-				retryDelay: 100,
-			});
+			await removeDirectoryWithRetries(worktreePath);
 		}
 		return {
 			stillRegistered,

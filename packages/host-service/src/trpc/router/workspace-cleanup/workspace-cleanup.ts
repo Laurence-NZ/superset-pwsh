@@ -1,5 +1,4 @@
 import { existsSync } from "node:fs";
-import { rm } from "node:fs/promises";
 import { sanitizePromptForPty } from "@superset/shared/agent-prompt-launch";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -7,6 +6,8 @@ import { invalidateLabelCache } from "../../../ports/static-ports";
 import { runTeardown, type TeardownResult } from "../../../runtime/teardown";
 import { disposeSessionsByWorkspaceId } from "../../../terminal/terminal";
 import type { HostServiceContext } from "../../../types";
+import { getHostWorkerPool } from "../../../workers/host-worker-pool";
+import { removeDirectoryTask } from "../../../workers/tasks/filesystem";
 import type { GitTaskEnv } from "../../../workers/tasks/git";
 import { deleteLocalWorkspace } from "../../../workspaces/local-workspace-store";
 import type {
@@ -326,7 +327,11 @@ async function runDestroy(
 				);
 			} else {
 				try {
-					await rm(local.worktreePath, { recursive: true, force: true });
+					await getHostWorkerPool().run(
+						removeDirectoryTask,
+						{ path: local.worktreePath },
+						{ timeoutMs: 120_000 },
+					);
 					worktreeRemoved = true;
 				} catch (err) {
 					const message = err instanceof Error ? err.message : String(err);
