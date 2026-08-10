@@ -79,6 +79,7 @@ function makeCtx(spec: ContextSpec): HostServiceContext & {
 	__mocks: {
 		cloudDelete: ReturnType<typeof mock>;
 		broadcastWorkspaceChanged: ReturnType<typeof mock>;
+		unwatchWorkspace: ReturnType<typeof mock>;
 	};
 } {
 	gitOpsSpec = spec;
@@ -106,6 +107,7 @@ function makeCtx(spec: ContextSpec): HostServiceContext & {
 	});
 	const terminalSelectAll = mock(() => []);
 	const broadcastWorkspaceChanged = mock(() => {});
+	const unwatchWorkspace = mock(() => {});
 
 	const ctx = {
 		isAuthenticated: true,
@@ -144,10 +146,10 @@ function makeCtx(spec: ContextSpec): HostServiceContext & {
 			}),
 		} as never,
 		runtime: {} as never,
-		eventBus: { broadcastWorkspaceChanged } as never,
+		eventBus: { broadcastWorkspaceChanged, unwatchWorkspace } as never,
 	};
 	return Object.assign(ctx as HostServiceContext, {
-		__mocks: { cloudDelete, broadcastWorkspaceChanged },
+		__mocks: { cloudDelete, broadcastWorkspaceChanged, unwatchWorkspace },
 	});
 }
 
