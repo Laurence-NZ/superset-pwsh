@@ -1,10 +1,14 @@
-// Runs the host-service end-to-end adoption test under Electron-as-Node.
+// Runs the host-service end-to-end terminal tests under Electron-as-Node.
 //
 // Why Electron and not raw `node`: host-service uses better-sqlite3, whose
 // native module is compiled against the Electron bundled Node ABI for
-// production. Running the test under Electron-as-Node ensures the same
+// production. Running the tests under Electron-as-Node ensures the same
 // native-module ABI as production. Raw `node` would fail with
 // NODE_MODULE_VERSION mismatch.
+//
+// Why the tsx loader and not --experimental-strip-types: the import chain
+// (terminal.ts → terminal-agents/persistence.ts) uses TypeScript parameter
+// properties, which strip-only mode rejects; tsx transforms them.
 //
 // Usage: bun run test:e2e
 
@@ -30,8 +34,9 @@ function getElectronBinarySuffix(platform: NodeJS.Platform): string {
 	return path.join("dist", platform === "win32" ? "electron.exe" : "electron");
 }
 
-function getBunElectronPackageDirs(
+function getBunPackageDirs(
 	root: string,
+	packageName: string,
 	readdirSync: typeof fs.readdirSync,
 ): string[] {
 	const bunStoreDir = path.join(root, "node_modules", ".bun");
@@ -39,10 +44,11 @@ function getBunElectronPackageDirs(
 	try {
 		return readdirSync(bunStoreDir, { withFileTypes: true })
 			.filter(
-				(entry) => entry.isDirectory() && entry.name.startsWith("electron@"),
+				(entry) =>
+					entry.isDirectory() && entry.name.startsWith(`${packageName}@`),
 			)
 			.map((entry) =>
-				path.join(bunStoreDir, entry.name, "node_modules", "electron"),
+				path.join(bunStoreDir, entry.name, "node_modules", packageName),
 			);
 	} catch {
 		return [];
@@ -59,7 +65,7 @@ export function getElectronBinaryCandidates(
 	const packageDirs = [
 		path.join(root, "apps", "desktop", "node_modules", "electron"),
 		path.join(root, "node_modules", "electron"),
-		...getBunElectronPackageDirs(root, readdirSync),
+		...getBunPackageDirs(root, "electron", readdirSync),
 	];
 
 	return packageDirs.map((dir) => path.join(dir, suffix));
@@ -75,7 +81,6 @@ export function findElectronBinary(
 	const first = getElectronBinaryCandidates(options).find((candidate) =>
 		existsSync(candidate),
 	);
-
 	if (!first) {
 		throw new Error(
 			"Electron binary not found. Run `bun install` from the repo root first.",
@@ -106,6 +111,23 @@ function formatNativeModuleAbiMismatchMessage(): string {
 	].join("\n");
 }
 
+function findTsxLoader(): string {
+	const packageDirs = [
+		path.join(repoRoot, "packages", "host-service", "node_modules", "tsx"),
+		path.join(repoRoot, "node_modules", "tsx"),
+		...getBunPackageDirs(repoRoot, "tsx", fs.readdirSync),
+	];
+	const first = packageDirs
+		.map((dir) => path.join(dir, "dist", "loader.mjs"))
+		.find((candidate) => fs.existsSync(candidate));
+	if (!first) {
+		throw new Error(
+			"tsx loader not found. Run `bun install` from the repo root first.",
+		);
+	}
+	return first;
+}
+
 function isMainModule(): boolean {
 	return process.argv[1]
 		? path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
@@ -114,25 +136,28 @@ function isMainModule(): boolean {
 
 function main(): never {
 	const electronBin = findElectronBinary();
-	const testFile = path.resolve(
-		__dirname,
-		"..",
+	const tsxLoader = findTsxLoader();
+	const testFiles = [
 		"src/terminal/terminal.adoption.node-test.ts",
-	);
+		"src/terminal/terminal.seq-catchup.node-test.ts",
+	].map((file) => path.resolve(__dirname, "..", file));
 
-	if (!fs.existsSync(testFile)) {
-		console.error(`Test file missing: ${testFile}`);
-		process.exit(1);
+	for (const testFile of testFiles) {
+		if (!fs.existsSync(testFile)) {
+			console.error(`Test file missing: ${testFile}`);
+			process.exit(1);
+		}
 	}
 
 	const result = childProcess.spawnSync(
 		electronBin,
 		[
-			"--experimental-strip-types",
+			"--import",
+			tsxLoader,
 			"--test",
 			"--test-force-exit",
 			"--test-reporter=spec",
-			testFile,
+			...testFiles,
 		],
 		{
 			encoding: "utf8",

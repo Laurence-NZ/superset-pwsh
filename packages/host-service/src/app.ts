@@ -19,6 +19,7 @@ import {
 	registerAcpSessionStreamRoute,
 	SqliteAcpSessionPersistence,
 } from "./runtime/acp-sessions";
+import { runArchivedWorkspaceReconcile } from "./runtime/archived-workspace-reconcile";
 import { ChatRuntimeManager } from "./runtime/chat";
 import { WorkspaceFilesystemManager } from "./runtime/filesystem";
 import type { GitCredentialProvider } from "./runtime/git";
@@ -77,6 +78,7 @@ export interface CreateAppResult {
 	injectWebSocket: ReturnType<typeof createNodeWebSocket>["injectWebSocket"];
 	api: ApiClient;
 	db: HostDb;
+	eventBus: EventBus;
 	dispose: () => Promise<void>;
 }
 
@@ -252,6 +254,23 @@ export function createApp(options: CreateAppOptions): CreateAppResult {
 		}).catch((err) => {
 			console.warn("[host-service] main-workspace sweep failed:", err);
 		});
+		// Finish any delete the previous process crashed out of (archived row
+		// whose worktree still exists).
+		await runArchivedWorkspaceReconcile({
+			git,
+			credentials: providers.credentials,
+			github,
+			execGh,
+			api,
+			db,
+			runtime,
+			eventBus,
+			terminalAgentStore,
+			organizationId: config.organizationId,
+			isAuthenticated: true,
+		}).catch((err) => {
+			console.warn("[host-service] archived-workspace reconcile failed:", err);
+		});
 	})();
 
 	const wsAuth: MiddlewareHandler = async (c, next) => {
@@ -347,5 +366,5 @@ export function createApp(options: CreateAppOptions): CreateAppResult {
 		}
 	};
 
-	return { app, injectWebSocket, api, db, dispose };
+	return { app, injectWebSocket, api, db, eventBus, dispose };
 }

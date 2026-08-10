@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Octokit } from "@octokit/rest";
 import { parseGitHubRemote } from "@superset/shared/github-remote";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import type { HostDb } from "../../db";
 import { projects, pullRequests, workspaces } from "../../db/schema";
 import type { EventBus } from "../../events/event-bus";
@@ -120,6 +120,8 @@ export interface PullRequestStateSnapshot {
 	reviewDecision: ReviewDecision;
 	checksStatus: ChecksStatus;
 	checks: PullRequestCheck[];
+	/** First observed merged, epoch ms. Never cleared once set. */
+	mergedAt: number | null;
 }
 
 export interface PullRequestWorkspaceSnapshot {
@@ -305,6 +307,7 @@ export class PullRequestRuntimeManager {
 				pullRequestReviewDecision: pullRequests.reviewDecision,
 				pullRequestChecksStatus: pullRequests.checksStatus,
 				pullRequestChecksJson: pullRequests.checksJson,
+				pullRequestMergedAt: pullRequests.mergedAt,
 				pullRequestLastFetchedAt: pullRequests.lastFetchedAt,
 				pullRequestError: pullRequests.error,
 			})
@@ -329,6 +332,7 @@ export class PullRequestRuntimeManager {
 							),
 							checksStatus: coerceChecksStatus(row.pullRequestChecksStatus),
 							checks: parseChecksJson(row.pullRequestChecksJson),
+							mergedAt: row.pullRequestMergedAt ?? null,
 						}
 					: null,
 			error: row.pullRequestError ?? null,
@@ -344,14 +348,21 @@ export class PullRequestRuntimeManager {
 		const rows = this.db
 			.select({
 				projectId: workspaces.projectId,
+				archivedAt: workspaces.archivedAt,
 			})
 			.from(workspaces)
 			.where(inArray(workspaces.id, workspaceIds))
 			.all();
 
-		// Session workspaces (null projectId) have no remote to sync.
+		// Session workspaces (null projectId) have no remote to sync; archived
+		// workspaces keep their PR state frozen at destroy time.
 		const projectIds = [
-			...new Set(rows.map((row) => row.projectId).filter((id) => id !== null)),
+			...new Set(
+				rows
+					.filter((row) => row.archivedAt == null)
+					.map((row) => row.projectId)
+					.filter((id) => id !== null),
+			),
 		];
 		await Promise.all(
 			projectIds.map((projectId) =>
@@ -446,14 +457,18 @@ export class PullRequestRuntimeManager {
 		// sweep's read+write and clobber the newer snapshot. enqueueWorkspaceSync
 		// coalesces — if a sync is already running for a workspace, this just
 		// flips its rerunPending flag.
-		// Session workspaces (null projectId) have no remote and no PRs.
-		// Filtered in JS: the unit-test fakes stub select().from().all()
-		// without a where() builder.
+		// Session workspaces (null projectId) have no remote and no PRs, and
+		// archived workspaces are frozen. Filtered in JS: the unit-test fakes
+		// stub select().from().all() without a where() builder.
 		const ids = this.db
-			.select({ id: workspaces.id, projectId: workspaces.projectId })
+			.select({
+				id: workspaces.id,
+				projectId: workspaces.projectId,
+				archivedAt: workspaces.archivedAt,
+			})
 			.from(workspaces)
 			.all()
-			.filter((row) => row.projectId !== null);
+			.filter((row) => row.projectId !== null && row.archivedAt == null);
 
 		// Sequential to keep git subprocess concurrency bounded; matches the
 		// original sweep's behavior. refreshProject inside each sync still
@@ -505,8 +520,9 @@ export class PullRequestRuntimeManager {
 			.get();
 		if (!workspace) return;
 		// Session workspaces (null projectId) have no remote and no PRs; the
-		// GitWatcher still fires for their repos, so gate here too.
-		if (workspace.projectId === null) return;
+		// GitWatcher still fires for their repos, so gate here too. Archived
+		// workspaces are frozen tombstones — never resync or relink them.
+		if (workspace.projectId === null || workspace.archivedAt !== null) return;
 
 		const projectId = await this.syncWorkspaceRow(workspace);
 		if (projectId) await this.refreshProject(projectId);
@@ -556,7 +572,11 @@ export class PullRequestRuntimeManager {
 						? { updatedAt: Date.now(), cloudSyncedAt: null }
 						: {}),
 				})
-				.where(eq(workspaces.id, workspace.id))
+				// Guard: the workspace can archive during the awaited ref read;
+				// a tombstone's branch/PR link is frozen.
+				.where(
+					and(eq(workspaces.id, workspace.id), isNull(workspaces.archivedAt)),
+				)
 				.run();
 
 			return workspace.projectId;
@@ -577,12 +597,20 @@ export class PullRequestRuntimeManager {
 		const rows = this.db
 			.select({
 				projectId: workspaces.projectId,
+				archivedAt: workspaces.archivedAt,
 			})
 			.from(workspaces)
 			.all();
-		// Session workspaces (null projectId) have no remote to sync.
+		// Session workspaces (null projectId) have no remote to sync; archived
+		// workspaces are frozen. Filtered in JS for the same fake-friendly
+		// reason as syncWorkspaceBranches.
 		const projectIds = [
-			...new Set(rows.map((row) => row.projectId).filter((id) => id !== null)),
+			...new Set(
+				rows
+					.filter((row) => row.archivedAt == null)
+					.map((row) => row.projectId)
+					.filter((id) => id !== null),
+			),
 		];
 		await Promise.all(
 			projectIds.map((projectId) => this.refreshProject(projectId)),
@@ -628,7 +656,10 @@ export class PullRequestRuntimeManager {
 			.select()
 			.from(workspaces)
 			.where(eq(workspaces.projectId, projectId))
-			.all();
+			.all()
+			// JS-filtered like the sweeps: archived rows keep their frozen PR
+			// link; refreshing them could clear it (e.g. branch deleted).
+			.filter((workspace) => workspace.archivedAt == null);
 		if (projectWorkspaces.length === 0) return;
 
 		const wantedRefs = new Map<string, GitHubPullRequestHeadRef>();
@@ -667,7 +698,12 @@ export class PullRequestRuntimeManager {
 					this.db
 						.update(workspaces)
 						.set({ pullRequestId: null })
-						.where(eq(workspaces.id, workspace.id))
+						.where(
+							and(
+								eq(workspaces.id, workspace.id),
+								isNull(workspaces.archivedAt),
+							),
+						)
 						.run();
 				}
 				continue;
@@ -682,7 +718,9 @@ export class PullRequestRuntimeManager {
 				this.db
 					.update(workspaces)
 					.set({ pullRequestId: match.id })
-					.where(eq(workspaces.id, workspace.id))
+					.where(
+						and(eq(workspaces.id, workspace.id), isNull(workspaces.archivedAt)),
+					)
 					.run();
 				continue;
 			}
@@ -693,7 +731,9 @@ export class PullRequestRuntimeManager {
 				this.db
 					.update(workspaces)
 					.set({ pullRequestId: null })
-					.where(eq(workspaces.id, workspace.id))
+					.where(
+						and(eq(workspaces.id, workspace.id), isNull(workspaces.archivedAt)),
+					)
 					.run();
 			}
 		}
@@ -875,6 +915,9 @@ export class PullRequestRuntimeManager {
 			reviewDecision,
 			checksStatus,
 			checksJson,
+			// Stamped at first merged observation (GitHub's node payload has no
+			// merge timestamp on this path); sticky thereafter.
+			mergedAt: existing?.mergedAt ?? (state === "merged" ? now : null),
 			lastFetchedAt,
 			error,
 			updatedAt: now,

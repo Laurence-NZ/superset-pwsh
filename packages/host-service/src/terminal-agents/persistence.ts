@@ -1,7 +1,7 @@
 import type { AgentDefinitionId } from "@superset/shared/agent-catalog";
 import { and, desc, eq, inArray, isNotNull, isNull, ne, or } from "drizzle-orm";
 import type { HostDb } from "../db";
-import { terminalAgentBindings, terminalSessions } from "../db/schema";
+import { terminalAgentBindings, terminalSessions } from "../db/schema.ts";
 import type {
 	TerminalAgentBindingListFilter,
 	TerminalAgentBindingPersistence,
@@ -213,7 +213,13 @@ export function seedEndedTerminalAgentBinding(
 export class SqliteTerminalAgentBindingPersistence
 	implements TerminalAgentBindingPersistence
 {
-	constructor(private readonly db: HostDb) {}
+	// No parameter property: this module is on terminal.ts's import chain,
+	// which node --experimental-strip-types test runners load unbundled.
+	private readonly db: HostDb;
+
+	constructor(db: HostDb) {
+		this.db = db;
+	}
 
 	load(): TerminalAgentBinding[] {
 		const rows = this.db
