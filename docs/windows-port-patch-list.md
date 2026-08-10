@@ -1051,18 +1051,24 @@ For **each** patch entry:
 - **Commits:** `f279800a5`; `55efa4998` (releases server-owned git watches and
   client filesystem subscriptions before directory removal.); `ff5a0b0da`
   (keeps the cleanup unit-test event bus aligned with the watcher-release
-  contract.)
+  contract.); `f1ef8d488` (awaits both async iterator cleanup and the isolated
+  watcher subprocess's native unsubscribe acknowledgement.)
 - **Override policy:** **OVERRIDABLE.** Adopt upstream when session-folder
   deletion runs off-loop with equivalent transient-lock retries.
 - **Invariant:** Session folders and residual worktree directories use the same
   recursive removal task: five retries with a 100 ms delay. Session deletion
   must not synchronously remove a potentially large tree on the host event loop.
-  All workspace watcher layers are released before either removal path begins.
+  All workspace watcher layers are confirmed released before either removal
+  path begins, including watches whose subscription is still starting.
 - **Where:** `packages/host-service/src/workers/tasks/filesystem.ts` and the
   session branch in `trpc/router/workspace-cleanup/workspace-cleanup.ts`;
-  `events/git-watcher.ts`; `events/event-bus.ts`.
+  `events/git-watcher.ts`; `events/event-bus.ts`;
+  `packages/workspace-fs/src/host/service.ts`; and the watcher subprocess
+  protocol/manager.
 - **Scan for:** direct recursive `rm` calls in either workspace deletion path,
-  or removal of the filesystem task from the host-worker registry.
+  removal of the filesystem task from the host-worker registry, discarded
+  iterator `return()` promises, or an `unsubscribe` request without an
+  `unsubscribed` acknowledgement.
 - **Symptom if broken:** deleting a Session intermittently fails on Windows with
   `EPERM`, `EBUSY`, or `ENOTEMPTY` immediately after its terminal is closed.
 
