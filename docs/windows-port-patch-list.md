@@ -1452,3 +1452,22 @@ notify the user and switch to theirs.
   inspector port number.
 - **Symptom if broken:** opening Claude with the browser MCP integration adds
   misleading workspace port chips for its bridge or code-mode sidecars.
+
+## F18 — Do not install Superset skills into Claude Code globally
+
+- **Commits:** `49fe57d2c`.
+- **Override policy:** **KEEP.** This fork deliberately avoids adding a
+  Superset plugin to the user's global Claude Code skill directory. Do not
+  restore upstream provisioning unless the user explicitly opts back in.
+- **Invariant:** Desktop startup never creates
+  `~/.claude/skills/superset`. It removes that directory only when Superset's
+  sentinel proves the app owns it, preserving any user-owned directory at the
+  same path. Provisioning into `~/.agents/skills` and
+  `~/.agents/commands/superset` remains enabled.
+- **Where:** `apps/desktop/src/main/lib/agent-setup/managed-skills.ts` and its
+  co-located test.
+- **Scan for:** `provisionClaudePlugin`, a desired Claude skill named
+  `superset`, or another startup path that copies `plugins/superset` into
+  `~/.claude/skills`.
+- **Symptom if broken:** launching either a development or packaged desktop
+  build recreates `~/.claude/skills/superset`.
