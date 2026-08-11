@@ -301,7 +301,7 @@ export function useV2WorkspaceRun({
 				state.stopRequestedAt ??= stoppedAt;
 				markStopped(state, stoppedAt, { state: "stopped-by-user" });
 			});
-			await utils.terminal.listSessions.invalidate({ workspaceId });
+			await utils.terminal.list.invalidate({ workspaceId });
 		} catch (error) {
 			if (isTerminalGoneError(error)) {
 				const stoppedAt = Date.now();
@@ -310,7 +310,7 @@ export function useV2WorkspaceRun({
 					if (!state || state.state !== "running") return;
 					markStopped(state, stoppedAt);
 				});
-				await utils.terminal.listSessions.invalidate({ workspaceId });
+				await utils.terminal.list.invalidate({ workspaceId });
 				return;
 			}
 
