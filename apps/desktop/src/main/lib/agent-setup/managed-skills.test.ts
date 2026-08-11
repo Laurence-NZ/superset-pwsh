@@ -93,39 +93,10 @@ describe("setFrontmatterName", () => {
 });
 
 describe("createManagedSkills", () => {
-	it("provisions the Claude skills-directory plugin verbatim with a sentinel", async () => {
+	it("does not provision skills globally into Claude Code", async () => {
 		await run();
 
-		expect(
-			JSON.parse(
-				readFileSync(
-					path.join(claudePlugin, ".claude-plugin", "plugin.json"),
-					"utf-8",
-				),
-			).name,
-		).toBe("superset");
-		for (const name of ["feedback", "10x", "orchestrate"]) {
-			expect(
-				readFileSync(
-					path.join(claudePlugin, "skills", name, "SKILL.md"),
-					"utf-8",
-				),
-			).toContain(`name: ${name}`);
-		}
-		expect(
-			existsSync(
-				path.join(
-					claudePlugin,
-					"skills",
-					"orchestrate",
-					"agents",
-					"openai.yaml",
-				),
-			),
-		).toBe(true);
-		expect(existsSync(path.join(claudePlugin, MANAGED_SENTINEL_NAME))).toBe(
-			true,
-		);
+		expect(existsSync(claudePlugin)).toBe(false);
 	});
 
 	it("provisions prefixed skill dirs for other agents with rewritten names", async () => {
@@ -219,21 +190,19 @@ describe("createManagedSkills", () => {
 				"utf-8",
 			),
 		).toContain("name: superset-newskill");
-		expect(
-			existsSync(path.join(claudePlugin, "skills", "newskill", "SKILL.md")),
-		).toBe(true);
+		expect(existsSync(claudePlugin)).toBe(false);
 	});
 
-	it("removes files from the plugin dir that left the bundle", async () => {
-		await run();
-		const removed = path.join(BUNDLED_PLUGIN, "skills", "10x");
-		rmSync(removed, { recursive: true });
-
-		await run();
-
-		expect(existsSync(path.join(claudePlugin, "skills", "10x"))).toBe(false);
-		expect(existsSync(path.join(claudePlugin, "skills", "feedback"))).toBe(
-			true,
+	it("removes the Claude plugin created by an earlier app version", async () => {
+		mkdirSync(claudePlugin, { recursive: true });
+		writeFileSync(
+			path.join(claudePlugin, MANAGED_SENTINEL_NAME),
+			`${MANAGED_SKILL_MARKER}\n`,
 		);
+		writeFileSync(path.join(claudePlugin, "old-skill.md"), "old\n");
+
+		await run();
+
+		expect(existsSync(claudePlugin)).toBe(false);
 	});
 });

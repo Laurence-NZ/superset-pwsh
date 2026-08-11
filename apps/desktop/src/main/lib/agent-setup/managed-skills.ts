@@ -16,13 +16,6 @@ export const MANAGED_SENTINEL_NAME = ".superset-managed";
 export const MANAGED_COMMAND_NAMESPACE = "superset";
 
 /**
- * Claude Code loads any ~/.claude/skills/<name> directory containing a
- * .claude-plugin/plugin.json as a "skills-directory plugin" named
- * `<name>@skills-dir`, namespacing its skills as `<name>:<skill>`.
- */
-const CLAUDE_PLUGIN_DIR_NAME = "superset";
-
-/**
  * Skills exposed as slash commands to the in-app chat. Deliberately a curated
  * allowlist (the chat menu shouldn't mirror every skill); everything else in
  * the bundled plugin is provisioned automatically.
@@ -67,76 +60,6 @@ function isManagedDir(dirPath: string): boolean {
 	if (fs.existsSync(path.join(dirPath, MANAGED_SENTINEL_NAME))) return true;
 	const skillMd = path.join(dirPath, "SKILL.md");
 	return fs.existsSync(skillMd) && !isUserOwnedFile(skillMd);
-}
-
-function listFilesRecursive(root: string, relative = ""): string[] {
-	const files: string[] = [];
-	const absolute = relative ? path.join(root, relative) : root;
-	for (const entry of fs.readdirSync(absolute, { withFileTypes: true })) {
-		const entryRelative = relative
-			? path.join(relative, entry.name)
-			: entry.name;
-		if (entry.isDirectory()) {
-			files.push(...listFilesRecursive(root, entryRelative));
-		} else if (entry.isFile()) {
-			files.push(entryRelative);
-		}
-	}
-	return files;
-}
-
-/**
- * Mirrors src into dest file-by-file (writeFileIfChanged semantics), removing
- * previously-managed files that no longer exist in src.
- */
-async function syncDir(src: string, dest: string): Promise<void> {
-	const sourceFiles = listFilesRecursive(src);
-	for (const file of sourceFiles) {
-		const target = path.join(dest, file);
-		fs.mkdirSync(path.dirname(target), { recursive: true });
-		writeFileIfChanged(
-			target,
-			fs.readFileSync(path.join(src, file), "utf-8"),
-			0o644,
-		);
-	}
-	const wanted = new Set(sourceFiles.map((f) => path.join(dest, f)));
-	if (fs.existsSync(dest)) {
-		for (const file of listFilesRecursive(dest)) {
-			const absolute = path.join(dest, file);
-			if (file === MANAGED_SENTINEL_NAME || wanted.has(absolute)) continue;
-			await rm(absolute);
-			let parent = path.dirname(absolute);
-			while (
-				parent !== dest &&
-				fs.existsSync(parent) &&
-				fs.readdirSync(parent).length === 0
-			) {
-				await rm(parent, { recursive: true });
-				parent = path.dirname(parent);
-			}
-		}
-	}
-}
-
-/** Provisions the bundled plugin as a Claude Code skills-directory plugin. */
-async function provisionClaudePlugin(
-	bundledPluginDir: string,
-	homeDir: string,
-): Promise<void> {
-	const target = path.join(
-		homeDir,
-		".claude",
-		"skills",
-		CLAUDE_PLUGIN_DIR_NAME,
-	);
-	const sentinel = path.join(target, MANAGED_SENTINEL_NAME);
-	if (fs.existsSync(target) && !fs.existsSync(sentinel)) {
-		console.log(`[agent-setup] Skipping user-owned plugin dir at ${target}`);
-		return;
-	}
-	await syncDir(bundledPluginDir, target);
-	writeFileIfChanged(sentinel, `${MANAGED_SKILL_MARKER}\n`, 0o644);
 }
 
 function readPluginSkill(
@@ -243,12 +166,6 @@ export async function createManagedSkills(
 		MANAGED_COMMAND_NAMESPACE,
 	);
 
-	try {
-		await provisionClaudePlugin(bundledPluginDir, homeDir);
-	} catch (error) {
-		console.warn("[agent-setup] Failed to provision Claude plugin:", error);
-	}
-
 	const bundledSkills = listBundledSkills(bundledPluginDir);
 	if (bundledSkills === null) {
 		console.warn(
@@ -316,11 +233,12 @@ export async function createManagedSkills(
 	}
 
 	try {
-		// ~/.claude/skills holds only the plugin dir; anything else marker-bearing
-		// there (including dirs from earlier versions of this mechanism) is stale.
+		// This fork does not install skills globally into Claude Code. An empty
+		// desired set also removes plugin dirs managed by an earlier app version,
+		// while reapStaleSkillDirs leaves user-owned directories untouched.
 		await reapStaleSkillDirs(
 			path.join(homeDir, ".claude", "skills"),
-			new Set([CLAUDE_PLUGIN_DIR_NAME]),
+			new Set(),
 		);
 		await reapStaleSkillDirs(agentsSkillsRoot, desiredAgentsDirs);
 		await reapStaleCommands(commandNamespaceDir, desiredCommandFiles);
