@@ -17,7 +17,7 @@ type WsSocket = {
 
 interface FsSubscription {
 	workspaceId: string;
-	dispose: () => Promise<void>;
+	dispose: () => void;
 }
 
 interface ClientState {
@@ -143,10 +143,10 @@ export class EventBus {
 		}
 	}
 
-	async unwatchWorkspace(workspaceId: string): Promise<void> {
-		await this.gitWatcher.unwatchWorkspace(workspaceId);
+	unwatchWorkspace(workspaceId: string): void {
+		this.gitWatcher.unwatchWorkspace(workspaceId);
 		for (const state of this.clients.values()) {
-			await this.stopFsWatch(state, workspaceId);
+			this.stopFsWatch(state, workspaceId);
 		}
 	}
 
@@ -328,16 +328,15 @@ export class EventBus {
 			return;
 		}
 
-		const dispose = async () => {
+		const dispose = () => {
 			disposed = true;
-			const currentIterator = iterator;
-			iterator = null;
-			await currentIterator?.return?.().catch((error: unknown) => {
+			void iterator?.return?.().catch((error: unknown) => {
 				console.error("[event-bus] fs watcher cleanup failed:", {
 					workspaceId,
 					error,
 				});
 			});
+			iterator = null;
 		};
 
 		state.fsSubscriptions.set(workspaceId, { workspaceId, dispose });
@@ -379,20 +378,17 @@ export class EventBus {
 		})();
 	}
 
-	private async stopFsWatch(
-		state: ClientState,
-		workspaceId: string,
-	): Promise<void> {
+	private stopFsWatch(state: ClientState, workspaceId: string): void {
 		const sub = state.fsSubscriptions.get(workspaceId);
 		if (sub) {
+			sub.dispose();
 			state.fsSubscriptions.delete(workspaceId);
-			await sub.dispose();
 		}
 	}
 
 	private cleanupClient(_socket: WsSocket, state: ClientState): void {
 		for (const sub of state.fsSubscriptions.values()) {
-			void sub.dispose();
+			sub.dispose();
 		}
 		state.fsSubscriptions.clear();
 	}

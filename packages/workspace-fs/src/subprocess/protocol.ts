@@ -16,6 +16,5 @@ export type FsWatcherRequest =
 export type FsWatcherResponse =
 	| { type: "ready" }
 	| { type: "subscribed"; id: number }
-	| { type: "unsubscribed"; id: number }
 	| { type: "subscribe-error"; id: number; message: string }
 	| { type: "events"; id: number; events: FsWatchEvent[] };

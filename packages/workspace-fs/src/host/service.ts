@@ -45,14 +45,12 @@ function createAsyncQueue<T>(
 		closed: false,
 		cleanup: null,
 	};
-	let subscriptionReady: Promise<void>;
 
 	const close = async () => {
 		if (state.closed) {
 			return;
 		}
 		state.closed = true;
-		await subscriptionReady;
 		const cleanup = state.cleanup;
 		state.cleanup = null;
 		if (cleanup) {
@@ -66,7 +64,7 @@ function createAsyncQueue<T>(
 		}
 	};
 
-	subscriptionReady = subscribe((value) => {
+	void subscribe((value) => {
 		if (state.closed) {
 			return;
 		}
@@ -80,6 +78,15 @@ function createAsyncQueue<T>(
 		state.queue.push(value);
 	})
 		.then((cleanup) => {
+			if (state.closed) {
+				void cleanup().catch((error) => {
+					console.error(
+						"[workspace-fs/createAsyncQueue] Cleanup after closed subscription failed:",
+						error,
+					);
+				});
+				return;
+			}
 			state.cleanup = cleanup;
 		})
 		.catch((error) => {

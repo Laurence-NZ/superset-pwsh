@@ -71,14 +71,7 @@ export function runFsWatcherSubprocess(
 			case "unsubscribe": {
 				const unsubscribe = unsubscribers.get(raw.id);
 				unsubscribers.delete(raw.id);
-				void (async () => {
-					if (unsubscribe) {
-						await unsubscribe().catch(() => {});
-					}
-					if (process.connected) {
-						post({ type: "unsubscribed", id: raw.id });
-					}
-				})();
+				if (unsubscribe) void unsubscribe().catch(() => {});
 				return;
 			}
 			case "close":

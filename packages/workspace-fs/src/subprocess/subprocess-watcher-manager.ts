@@ -58,7 +58,6 @@ export class SubprocessWatcherManager {
 	private crashLoopStopped = false;
 	private nextId = 0;
 	private readonly subs = new Map<number, Subscription>();
-	private readonly pendingUnsubscribes = new Map<number, () => void>();
 	private restartTimes: number[] = [];
 	private respawnTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -100,10 +99,6 @@ export class SubprocessWatcherManager {
 			sub.pending?.reject(new Error("watcher manager closed"));
 		}
 		this.subs.clear();
-		for (const resolve of this.pendingUnsubscribes.values()) {
-			resolve();
-		}
-		this.pendingUnsubscribes.clear();
 		const child = this.child;
 		this.child = null;
 		this.childReady = false;
@@ -155,11 +150,6 @@ export class SubprocessWatcherManager {
 				}
 				return;
 			}
-			case "unsubscribed": {
-				this.pendingUnsubscribes.get(message.id)?.();
-				this.pendingUnsubscribes.delete(message.id);
-				return;
-			}
 			case "subscribe-error": {
 				const sub = this.subs.get(message.id);
 				console.error("[fs-watcher] subscribe failed:", {
@@ -192,10 +182,7 @@ export class SubprocessWatcherManager {
 		}
 		this.subs.delete(id);
 		if (this.child && this.childReady) {
-			await new Promise<void>((resolve) => {
-				this.pendingUnsubscribes.set(id, resolve);
-				this.post({ type: "unsubscribe", id });
-			});
+			this.post({ type: "unsubscribe", id });
 		}
 		// Last watch gone: let the idle child exit so we don't hold a process open.
 		if (this.subs.size === 0 && this.child) {
@@ -213,10 +200,6 @@ export class SubprocessWatcherManager {
 		}
 		this.child = null;
 		this.childReady = false;
-		for (const resolve of this.pendingUnsubscribes.values()) {
-			resolve();
-		}
-		this.pendingUnsubscribes.clear();
 		if (this.closed || this.subs.size === 0) {
 			return;
 		}

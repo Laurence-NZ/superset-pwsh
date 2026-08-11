@@ -409,7 +409,7 @@ async function runDestroyPhases(
 	// Release both server-owned git watches and client-requested filesystem
 	// watches before removing the directory. On Windows, an open watcher handle
 	// makes the final rmdir fail with EBUSY even after every terminal has exited.
-	await ctx.eventBus.unwatchWorkspace(input.workspaceId);
+	ctx.eventBus.unwatchWorkspace(input.workspaceId);
 
 	// 3b. Worktree. Double-force unlocks the rare locked-worktree case and
 	//     clears stale metadata when the directory was manually removed.

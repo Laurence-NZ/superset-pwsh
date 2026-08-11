@@ -107,39 +107,6 @@ describe("createFsHostService", () => {
 		expect(unsubscribed).toEqual(true);
 	});
 
-	it("waits for a pending watcher subscription before closing it", async () => {
-		let finishSubscribe: (() => void) | undefined;
-		const subscribeReady = new Promise<void>((resolve) => {
-			finishSubscribe = resolve;
-		});
-		let unsubscribed = false;
-		const service = createFsHostService({
-			rootPath: "/tmp/workspace",
-			watcherManager: {
-				async subscribe() {
-					await subscribeReady;
-					return async () => {
-						unsubscribed = true;
-					};
-				},
-				async close() {},
-			},
-		});
-		const iterator = service
-			.watchPath({ absolutePath: "/tmp/workspace" })
-			[Symbol.asyncIterator]();
-
-		let closed = false;
-		const closePromise = iterator.return?.().then(() => {
-			closed = true;
-		});
-		expect(closed).toBe(false);
-		finishSubscribe?.();
-		await closePromise;
-		expect(unsubscribed).toBe(true);
-		expect(closed).toBe(true);
-	});
-
 	it("rejects watchPath targets other than the workspace root", async () => {
 		const service = createFsHostService({
 			rootPath: "/tmp/workspace",

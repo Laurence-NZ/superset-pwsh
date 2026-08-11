@@ -71,12 +71,9 @@ describe("EventBus port events", () => {
 	});
 });
 
-it("waits for server and client filesystem watches to be released", async () => {
+it("releases server and client filesystem watches for a workspace", () => {
 	const unwatchGit = jest.fn();
-	let releaseClientWatch: (() => void) | undefined;
-	const clientWatchReleased = new Promise<void>((resolve) => {
-		releaseClientWatch = resolve;
-	});
+	const disposeClientWatch = jest.fn();
 	const eventBus = new EventBus({
 		db: {} as unknown as HostDb,
 		filesystem: {
@@ -86,7 +83,7 @@ it("waits for server and client filesystem watches to be released", async () => 
 					[Symbol.asyncIterator]: () => ({
 						next: () => new Promise(() => {}),
 						return: async () => {
-							await clientWatchReleased;
+							disposeClientWatch();
 							return { done: true, value: undefined };
 						},
 					}),
@@ -105,14 +102,8 @@ it("waits for server and client filesystem watches to be released", async () => 
 		socket,
 		JSON.stringify({ type: "fs:watch", workspaceId: "workspace-1" }),
 	);
-	let finished = false;
-	const unwatchPromise = eventBus.unwatchWorkspace("workspace-1").then(() => {
-		finished = true;
-	});
+	eventBus.unwatchWorkspace("workspace-1");
 
 	expect(unwatchGit).toHaveBeenCalledWith("workspace-1");
-	expect(finished).toBe(false);
-	releaseClientWatch?.();
-	await unwatchPromise;
-	expect(finished).toBe(true);
+	expect(disposeClientWatch).toHaveBeenCalledTimes(1);
 });
