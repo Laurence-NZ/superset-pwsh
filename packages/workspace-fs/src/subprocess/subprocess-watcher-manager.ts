@@ -10,6 +10,7 @@
 // docs/windows-crash-forensics.md.
 
 import { type ChildProcess, spawn } from "node:child_process";
+import path from "node:path";
 import { normalizeAbsolutePath } from "../paths";
 import {
 	invalidateSearchIndexesForRoot,
@@ -17,6 +18,7 @@ import {
 	type SearchPatchEvent,
 } from "../search";
 import type { FsWatchEvent } from "../types";
+import { isRelPathUnderPrunedDirs } from "../watch";
 import type { FsWatcherRequest, FsWatcherResponse } from "./protocol";
 
 type WatchBatchListener = (batch: { events: FsWatchEvent[] }) => void;
@@ -24,11 +26,18 @@ type WatchBatchListener = (batch: { events: FsWatchEvent[] }) => void;
 interface Subscription {
 	absolutePath: string;
 	listener: WatchBatchListener;
+	prunedRelPrefixes: string[] | null;
 	/** Resolvers for the first subscribe() call, pending its initial ack. */
 	pending: {
 		resolve: (unsubscribe: () => Promise<void>) => void;
 		reject: (error: unknown) => void;
 	} | null;
+}
+
+interface PendingRefresh {
+	absolutePath: string;
+	resolve: (swapped: boolean) => void;
+	reject: (error: Error) => void;
 }
 
 export interface SubprocessWatcherManagerOptions {
@@ -58,6 +67,7 @@ export class SubprocessWatcherManager {
 	private crashLoopStopped = false;
 	private nextId = 0;
 	private readonly subs = new Map<number, Subscription>();
+	private readonly pendingRefreshes = new Map<number, PendingRefresh>();
 	private restartTimes: number[] = [];
 	private respawnTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -79,6 +89,7 @@ export class SubprocessWatcherManager {
 			this.subs.set(id, {
 				absolutePath,
 				listener,
+				prunedRelPrefixes: null,
 				pending: { resolve, reject },
 			});
 			this.ensureChild();
@@ -86,6 +97,39 @@ export class SubprocessWatcherManager {
 				this.post({ type: "subscribe", id, absolutePath });
 			}
 			// else: sent for every live sub once the child emits "ready".
+		});
+	}
+
+	isPathPruned(rootAbsolutePath: string, absolutePath: string): boolean {
+		const root = normalizeAbsolutePath(rootAbsolutePath);
+		const subscription = [...this.subs.values()].find(
+			(candidate) => candidate.absolutePath === root,
+		);
+		if (!subscription?.prunedRelPrefixes) {
+			return true;
+		}
+		const relative = path
+			.relative(root, normalizeAbsolutePath(absolutePath))
+			.split(path.sep)
+			.join("/");
+		if (relative === "" || relative.startsWith("..")) {
+			return true;
+		}
+		return isRelPathUnderPrunedDirs(relative, subscription.prunedRelPrefixes);
+	}
+
+	async refreshIgnores(rootAbsolutePath: string): Promise<boolean> {
+		const absolutePath = normalizeAbsolutePath(rootAbsolutePath);
+		const subscription = [...this.subs.values()].find(
+			(candidate) => candidate.absolutePath === absolutePath,
+		);
+		if (!subscription || !this.childReady) {
+			return false;
+		}
+		const id = ++this.nextId;
+		return await new Promise<boolean>((resolve, reject) => {
+			this.pendingRefreshes.set(id, { absolutePath, resolve, reject });
+			this.post({ type: "refresh-ignores", id, absolutePath });
 		});
 	}
 
@@ -98,6 +142,10 @@ export class SubprocessWatcherManager {
 		for (const sub of this.subs.values()) {
 			sub.pending?.reject(new Error("watcher manager closed"));
 		}
+		for (const refresh of this.pendingRefreshes.values()) {
+			refresh.reject(new Error("watcher manager closed"));
+		}
+		this.pendingRefreshes.clear();
 		this.subs.clear();
 		const child = this.child;
 		this.child = null;
@@ -144,10 +192,31 @@ export class SubprocessWatcherManager {
 				return;
 			case "subscribed": {
 				const sub = this.subs.get(message.id);
+				if (sub) {
+					sub.prunedRelPrefixes = message.prunedRelPrefixes;
+				}
 				if (sub?.pending) {
 					sub.pending.resolve(() => this.unsubscribe(message.id));
 					sub.pending = null;
 				}
+				return;
+			}
+			case "ignores-refreshed": {
+				const refresh = this.pendingRefreshes.get(message.id);
+				if (!refresh) return;
+				this.pendingRefreshes.delete(message.id);
+				const sub = [...this.subs.values()].find(
+					(candidate) => candidate.absolutePath === refresh.absolutePath,
+				);
+				if (sub) sub.prunedRelPrefixes = message.prunedRelPrefixes;
+				refresh.resolve(message.swapped);
+				return;
+			}
+			case "refresh-error": {
+				const refresh = this.pendingRefreshes.get(message.id);
+				if (!refresh) return;
+				this.pendingRefreshes.delete(message.id);
+				refresh.reject(new Error(message.message));
 				return;
 			}
 			case "subscribe-error": {
@@ -200,6 +269,10 @@ export class SubprocessWatcherManager {
 		}
 		this.child = null;
 		this.childReady = false;
+		for (const refresh of this.pendingRefreshes.values()) {
+			refresh.reject(new Error("fs-watcher child exited"));
+		}
+		this.pendingRefreshes.clear();
 		if (this.closed || this.subs.size === 0) {
 			return;
 		}

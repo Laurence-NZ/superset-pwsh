@@ -79,8 +79,16 @@ describe("SubprocessWatcherManager", () => {
 		const request = nonNull(child.subscribeRequests[0], "subscribe request");
 		expect(request.absolutePath).toBe(REPO);
 
-		child.reply({ type: "subscribed", id: request.id });
+		child.reply({
+			type: "subscribed",
+			id: request.id,
+			prunedRelPrefixes: ["generated-old"],
+		});
 		await expect(subscribePromise).resolves.toBeInstanceOf(Function);
+		expect(manager.isPathPruned("/repo", "/repo/generated-old/app.js")).toBe(
+			true,
+		);
+		expect(manager.isPathPruned("/repo", "/repo/src/app.ts")).toBe(false);
 
 		child.reply({
 			type: "events",
@@ -106,7 +114,11 @@ describe("SubprocessWatcherManager", () => {
 		);
 		await tick();
 		const first = nonNull(spawned[0], "first child");
-		first.reply({ type: "subscribed", id: first.firstSubscribeId() });
+		first.reply({
+			type: "subscribed",
+			id: first.firstSubscribeId(),
+			prunedRelPrefixes: [],
+		});
 		await subscribePromise;
 
 		first.crash();
@@ -124,6 +136,43 @@ describe("SubprocessWatcherManager", () => {
 		await manager.close();
 	});
 
+	it("refreshes ignore state through the child", async () => {
+		const { manager, spawned } = makeManager();
+		const subscribePromise = manager.subscribe(
+			{ absolutePath: "/repo" },
+			() => {},
+		);
+		await tick();
+		const child = nonNull(spawned[0], "child");
+		child.reply({
+			type: "subscribed",
+			id: child.firstSubscribeId(),
+			prunedRelPrefixes: ["generated-old"],
+		});
+		await subscribePromise;
+
+		const refreshPromise = manager.refreshIgnores("/repo");
+		const request = nonNull(
+			child.sent.find((message) => message.type === "refresh-ignores"),
+			"refresh request",
+		);
+		child.reply({
+			type: "ignores-refreshed",
+			id: request.id,
+			swapped: true,
+			prunedRelPrefixes: ["generated-new"],
+		});
+
+		await expect(refreshPromise).resolves.toBe(true);
+		expect(manager.isPathPruned("/repo", "/repo/generated-old/app.js")).toBe(
+			false,
+		);
+		expect(manager.isPathPruned("/repo", "/repo/generated-new/app.js")).toBe(
+			true,
+		);
+		await manager.close();
+	});
+
 	it("stops respawning after a crash loop", async () => {
 		const { manager, spawned } = makeManager();
 
@@ -133,7 +182,11 @@ describe("SubprocessWatcherManager", () => {
 		);
 		await tick();
 		const first = nonNull(spawned[0], "first child");
-		first.reply({ type: "subscribed", id: first.firstSubscribeId() });
+		first.reply({
+			type: "subscribed",
+			id: first.firstSubscribeId(),
+			prunedRelPrefixes: [],
+		});
 		await subscribePromise;
 
 		// Crash each successive child immediately. After MAX_RESTARTS_PER_WINDOW

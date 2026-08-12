@@ -776,6 +776,14 @@ export class FsWatcherManager {
 		return isRelPathUnderPrunedDirs(relative, state.prunedRelPrefixes);
 	}
 
+	getPrunedRelPrefixes(rootAbsolutePath: string): string[] | null {
+		const state = this.watchers.get(normalizeAbsolutePath(rootAbsolutePath));
+		if (!state || !state.subscription) {
+			return null;
+		}
+		return [...state.prunedRelPrefixes];
+	}
+
 	/**
 	 * The watch root was deleted: the native stream is dead and will never
 	 * deliver again (FSEvents keeps following the old inode). Keep the state

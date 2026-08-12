@@ -3,6 +3,7 @@
 // SubprocessWatcherManager's sibling-path resolution finds it. All logic lives
 // in @superset/workspace-fs so host-service and the desktop main process share
 // one implementation.
+import { listGitIgnoredDirs } from "@superset/host-service/git";
 import { runFsWatcherSubprocess } from "@superset/workspace-fs/host";
 
-runFsWatcherSubprocess();
+runFsWatcherSubprocess({ managerOptions: { listGitIgnoredDirs } });

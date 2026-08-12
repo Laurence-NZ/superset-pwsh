@@ -57,11 +57,38 @@ export function runFsWatcherSubprocess(
 							return;
 						}
 						unsubscribers.set(id, unsubscribe);
-						post({ type: "subscribed", id });
+						post({
+							type: "subscribed",
+							id,
+							prunedRelPrefixes:
+								manager.getPrunedRelPrefixes(absolutePath) ?? [],
+						});
 					})
 					.catch((error: unknown) => {
 						post({
 							type: "subscribe-error",
+							id,
+							message: error instanceof Error ? error.message : String(error),
+						});
+					});
+				return;
+			}
+			case "refresh-ignores": {
+				const { id, absolutePath } = raw;
+				void manager
+					.refreshIgnores(absolutePath)
+					.then((swapped) => {
+						post({
+							type: "ignores-refreshed",
+							id,
+							swapped,
+							prunedRelPrefixes:
+								manager.getPrunedRelPrefixes(absolutePath) ?? [],
+						});
+					})
+					.catch((error: unknown) => {
+						post({
+							type: "refresh-error",
 							id,
 							message: error instanceof Error ? error.message : String(error),
 						});

@@ -10,11 +10,19 @@ import type { FsWatchEvent } from "../types";
 export type FsWatcherRequest =
 	| { type: "subscribe"; id: number; absolutePath: string }
 	| { type: "unsubscribe"; id: number }
+	| { type: "refresh-ignores"; id: number; absolutePath: string }
 	| { type: "close" };
 
 /** Child → parent. */
 export type FsWatcherResponse =
 	| { type: "ready" }
-	| { type: "subscribed"; id: number }
+	| { type: "subscribed"; id: number; prunedRelPrefixes: string[] }
 	| { type: "subscribe-error"; id: number; message: string }
+	| {
+			type: "ignores-refreshed";
+			id: number;
+			swapped: boolean;
+			prunedRelPrefixes: string[];
+	  }
+	| { type: "refresh-error"; id: number; message: string }
 	| { type: "events"; id: number; events: FsWatchEvent[] };

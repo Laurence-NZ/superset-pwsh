@@ -11,8 +11,12 @@ import {
 import { eq } from "drizzle-orm";
 import type { HostDb } from "../../db/index.ts";
 import { projects, workspaces } from "../../db/schema.ts";
+import { listGitIgnoredDirs } from "../git/index.ts";
 
-type WatcherManager = Pick<FsWatcherManager, "subscribe" | "close">;
+type WatcherManager = Pick<
+	FsWatcherManager,
+	"subscribe" | "close" | "isPathPruned" | "refreshIgnores"
+>;
 
 // win32: @parcel/watcher's native ReadDirectoryChangesW backend crashes the
 // host-service with a native use-after-free under worktree churn (see
@@ -20,7 +24,7 @@ type WatcherManager = Pick<FsWatcherManager, "subscribe" | "close">;
 // process. Other platforms keep the in-process native watcher unchanged.
 function createWatcherManager(): WatcherManager {
 	if (process.platform !== "win32") {
-		return new FsWatcherManager();
+		return new FsWatcherManager({ listGitIgnoredDirs });
 	}
 	const override = process.env.SUPERSET_FS_WATCHER_SCRIPT_PATH;
 	// host-service.js and fs-watcher-subprocess.js are emitted side-by-side.
@@ -30,7 +34,7 @@ function createWatcherManager(): WatcherManager {
 		console.error(
 			`[fs-watcher] subprocess script not found at ${scriptPath}; falling back to in-process watcher (crash risk)`,
 		);
-		return new FsWatcherManager();
+		return new FsWatcherManager({ listGitIgnoredDirs });
 	}
 	return new SubprocessWatcherManager({ scriptPath });
 }

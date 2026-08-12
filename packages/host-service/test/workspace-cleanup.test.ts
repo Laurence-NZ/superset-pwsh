@@ -138,7 +138,6 @@ function makeCtx(spec: ContextSpec): HostServiceContext & {
 		eventBus: { broadcastWorkspaceChanged, unwatchWorkspace } as never,
 	};
 	return Object.assign(ctx as HostServiceContext, {
-		__mocks: { broadcastWorkspaceChanged },
 		__mocks: { broadcastWorkspaceChanged, unwatchWorkspace },
 	});
 }

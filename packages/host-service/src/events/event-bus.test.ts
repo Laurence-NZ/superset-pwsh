@@ -106,6 +106,8 @@ it("releases server and client filesystem watches for a workspace", () => {
 
 	expect(unwatchGit).toHaveBeenCalledWith("workspace-1");
 	expect(disposeClientWatch).toHaveBeenCalledTimes(1);
+});
+
 describe("EventBus fs:watch-file", () => {
 	async function createFileWatchHarness(pruned: boolean) {
 		const fs = await import("node:fs/promises");

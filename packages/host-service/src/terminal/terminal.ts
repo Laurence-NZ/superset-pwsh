@@ -7,15 +7,15 @@ import { StringDecoder } from "node:string_decoder";
 import type { NodeWebSocket } from "@hono/node-ws";
 import { hasRunningForegroundProcess } from "@superset/pty-daemon/process-tree";
 import {
-	appendShellLineEnding,
-	buildShellChangeDirectoryCommand,
-	buildShellCommandChain,
-} from "@superset/shared/shell";
-import {
 	buildFishPromptCommandString,
 	type ParsedPromptHeredocCommand,
 	parsePromptHeredocCommand,
 } from "@superset/shared/agent-prompt-launch";
+import {
+	appendShellLineEnding,
+	buildShellChangeDirectoryCommand,
+	buildShellCommandChain,
+} from "@superset/shared/shell";
 import {
 	createScanState,
 	type ShellReadyScanState,
@@ -2005,7 +2005,7 @@ function queueInitialCommand(
 		if (
 			process.platform !== "win32" &&
 			Buffer.byteLength(effectiveCommand, "utf8") >
-			MAX_TYPED_INITIAL_COMMAND_BYTES
+				MAX_TYPED_INITIAL_COMMAND_BYTES
 		) {
 			const staged = stageInitialCommandScript(session, effectiveCommand);
 			if (staged) {
