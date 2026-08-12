@@ -7,4 +7,5 @@ export * from "../subprocess/run-subprocess";
 export * from "../subprocess/subprocess-watcher-manager";
 export * from "../types";
 export * from "../watch";
+export * from "../watch-file";
 export * from "./service";

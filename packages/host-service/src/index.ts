@@ -19,7 +19,11 @@ export {
 	LocalModelProvider,
 } from "./providers/model-providers";
 export type { GitCredentialProvider, GitFactory } from "./runtime/git";
-export { installProcessSafetyNet, startProcessDiagnostics } from "./safety";
+export {
+	installProcessSafetyNet,
+	installUpgradeSocketGuard,
+	startProcessDiagnostics,
+} from "./safety";
 export { captureFatalStartupError, initSentry } from "./sentry";
 export {
 	reconcileStaleWindowsTerminalSessions,

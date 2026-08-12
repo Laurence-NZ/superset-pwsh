@@ -110,6 +110,14 @@ export function V2OpenInMenuButton({
 								: "Open in editor"
 						}
 						className={cn(
+							// Icon-only when the nearest @container is narrow; the branch
+							// label comes back once there's room (right sidebar is resizable,
+							// so viewport breakpoints don't apply here). The threshold is
+							// higher than the PR badge's so the badge (with its merge
+							// chevron) keeps space priority and never clips in the 240-320px
+							// dead zone (#6385).
+							"group flex h-6 items-center justify-center gap-1.5 rounded-l border border-r-0 border-border/60 bg-secondary/50 px-1.5 text-xs font-medium @[320px]:pr-2",
+							"transition-all duration-150 ease-out",
 							"group flex h-6 items-center gap-1.5 border border-r-0 text-xs font-medium",
 							"focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
 							// tabbar: transparent chrome matching the run button; sidebar:
@@ -131,7 +139,7 @@ export function V2OpenInMenuButton({
 							<OverflowFadeText
 								className={cn(
 									"text-muted-foreground tabular-nums",
-									isTabBar ? "inline-block" : "hidden @[240px]:inline-block",
+									isTabBar ? "inline-block" : "hidden @[320px]:inline-block",
 									isTabBar ? "max-w-24" : "max-w-[140px]",
 								)}
 								title={branch}

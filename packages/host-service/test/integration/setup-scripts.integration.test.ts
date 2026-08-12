@@ -34,10 +34,12 @@ describe("setup scripts integration", () => {
 		}
 	});
 
+	// The ungated typing path adds deliberate delay before the command and its
+	// Enter land, so this needs headroom beyond Bun's default timeout.
 	test(
 		"v2 settings config is the same config used by workspace setup terminals",
 		{
-			timeout: 15_000,
+			timeout: 20_000,
 		},
 		async () => {
 			const scenario = await createProjectScenario({

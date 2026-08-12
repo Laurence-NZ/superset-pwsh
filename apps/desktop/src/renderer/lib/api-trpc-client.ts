@@ -5,9 +5,8 @@ import { getAuthToken } from "./auth-client";
 import { getRuntimeApiUrl } from "./desktop-runtime-flags";
 
 /**
- * HTTP tRPC client for calling the API server.
- * Uses bearer token authentication like the auth client.
- * For mutations only - for fetching data we already have electric
+ * Imperative tRPC client for the API server (bearer-token auth). For
+ * component data fetching use the `cloudTrpc` React Query hooks instead.
  */
 export const apiTrpcClient = createTRPCProxyClient<AppRouter>({
 	links: [

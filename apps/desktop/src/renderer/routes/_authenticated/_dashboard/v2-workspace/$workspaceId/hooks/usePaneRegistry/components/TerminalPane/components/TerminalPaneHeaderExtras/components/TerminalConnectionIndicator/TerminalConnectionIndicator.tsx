@@ -102,6 +102,12 @@ export function TerminalConnectionIndicator({
 			terminalInstanceId,
 		),
 	);
+	const terminated = useSyncExternalStore(subscribe, () =>
+		terminalRuntimeRegistry.isConnectionTerminated(
+			terminalId,
+			terminalInstanceId,
+		),
+	);
 	const [confirmRestartOpen, setConfirmRestartOpen] = useState(false);
 	const [showLog, setShowLog] = useState(false);
 
@@ -153,7 +159,8 @@ export function TerminalConnectionIndicator({
 	// The live shell is gone for good (Windows app restart / reboot): a neutral
 	// read-only tombstone, not a failure — reconnecting would just re-fail (W12).
 	const sessionEnded = diagnosis?.category === "session_ended";
-	const gaveUp = diagnosis !== null && connectionState === "closed";
+	const gaveUp =
+		diagnosis !== null && connectionState === "closed" && terminated;
 	// Failure modes so copy + colour name the fix that applies. Amber = still
 	// working itself out (auto-retry, or a stall that usually self-heals); red =
 	// we've stopped trying and need the user; "ended" is the neutral W12
