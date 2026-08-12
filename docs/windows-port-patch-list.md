@@ -910,7 +910,8 @@ For **each** patch entry:
 ## W30 — Isolate the win32 fs-watcher in a child process
 
 - **Commits:** `ee1da54c2`; `22b1e41f3` (post-W30 ProcDump target and
-  containment runbook).
+  containment runbook); `b03291308` (runs gitignored-directory discovery
+  inside the child and mirrors pruning state/refreshes over IPC).
 - **Override policy:** **OVERRIDABLE.** Trigger: if `@parcel/watcher` fixes the
   Windows `ReadDirectoryChangesW` use-after-free (see W15 / the forensics doc),
   drop the isolation and go back to an in-process `FsWatcherManager` on win32.
@@ -920,7 +921,9 @@ For **each** patch entry:
   (never `new FsWatcherManager()` in-process). macOS/Linux keep the in-process
   native watcher. The child entry `fs-watcher-subprocess.js` must be emitted
   side-by-side with `host-service.js` / the main bundle so sibling-path
-  resolution finds it.
+  resolution finds it. Watcher callbacks that cannot cross IPC, including
+  `listGitIgnoredDirs`, must be configured inside the child entry and mirrored
+  by every in-process fallback.
 - **Why:** `@parcel/watcher@2.5.6`'s native `windows` backend faults with a
   use-after-free (`0xC0000005`) on its own watch thread under worktree churn,
   and `FsWatcherManager` runs **in-process** in the host-service (and the
