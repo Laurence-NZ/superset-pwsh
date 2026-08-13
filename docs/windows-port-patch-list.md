@@ -1061,7 +1061,8 @@ For **each** patch entry:
 - **Commits:** `f279800a5`; `55efa4998` (releases server-owned git watches and
   client filesystem subscriptions before directory removal.); `ff5a0b0da`
   (keeps the cleanup unit-test event bus aligned with the watcher-release
-  contract.)
+  contract.); this documentation commit (records the packaged-app `EBUSY`
+  reproduction and the reverted watcher-handshake history.)
 - **Override policy:** **OVERRIDABLE.** Adopt upstream when session-folder
   deletion runs off-loop with equivalent transient-lock retries.
 - **Invariant:** Session folders and residual worktree directories use the same
@@ -1070,9 +1071,13 @@ For **each** patch entry:
   All workspace watcher layers are released before either removal path begins.
 - **Where:** `packages/host-service/src/workers/tasks/filesystem.ts` and the
   session branch in `trpc/router/workspace-cleanup/workspace-cleanup.ts`;
-  `events/git-watcher.ts`; `events/event-bus.ts`.
+  `events/git-watcher.ts`; `events/event-bus.ts`; diagnostic handoff in
+  `docs/windows-workspace-delete-ebusy-reproduction.md`.
 - **Scan for:** direct recursive `rm` calls in either workspace deletion path,
-  or removal of the filesystem task from the host-worker registry.
+  removal of the filesystem task from the host-worker registry, or a
+  fire-and-forget watcher unsubscribe that permits removal to race the isolated
+  watcher's native handle release. `f1ef8d488` added an acknowledgement but was
+  reverted by `dd5676bd3`; investigate the revert before restoring it.
 - **Symptom if broken:** deleting a Session intermittently fails on Windows with
   `EPERM`, `EBUSY`, or `ENOTEMPTY` immediately after its terminal is closed.
 
