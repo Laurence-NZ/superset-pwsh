@@ -56,11 +56,46 @@ function runNotifyNodeHook(input: Record<string, unknown>) {
 
 describe("getNotifyScriptContent", () => {
 	it("bumps the notify hook marker when hook semantics change", () => {
-		expect(NOTIFY_SCRIPT_MARKER).toBe("# Superset agent notification hook v7");
+		expect(NOTIFY_SCRIPT_MARKER).toBe("# Superset agent notification hook v8");
 		expect(WINDOWS_NOTIFY_SCRIPT_MARKER).toBe(
-			"rem Superset agent notification hook v7",
+			"rem Superset agent notification hook v8",
 		);
 	});
+
+	itBash("ignores hooks fired inside a subagent (agent_id present)", () => {
+		const result = runNotifyHook({
+			hook_event_name: "PostToolUse",
+			session_id: "main-session",
+			agent_id: "a251e067cfdbabec7",
+			agent_type: "general-purpose",
+		});
+
+		expect(result.exitCode).toBe(0);
+		expect(result.stderr.toString()).toBe("");
+	});
+
+	itBash("still dispatches main-loop hooks without agent_id", () => {
+		const result = runNotifyHook({
+			hook_event_name: "Stop",
+			session_id: "main-session",
+		});
+
+		expect(result.exitCode).toBe(0);
+		expect(result.stderr.toString()).toContain("[notify-hook] event=Stop");
+	});
+
+	itBash(
+		"exits silently outside Superset terminals even with a payload session id",
+		() => {
+			const result = runNotifyHook(
+				{ hook_event_name: "Stop", session_id: "foreign-session" },
+				{ SUPERSET_TERMINAL_ID: "", SUPERSET_TAB_ID: "" },
+			);
+
+			expect(result.exitCode).toBe(0);
+			expect(result.stderr.toString()).toBe("");
+		},
+	);
 
 	it("uses notify.cmd as the native Windows notify entrypoint", () => {
 		expect(getNotifyScriptPath("win32")).toMatch(/notify\.cmd$/);
@@ -230,6 +265,17 @@ describe("getNotifyScriptContent", () => {
 		const result = runNotifyNodeHook({
 			hookEventName: "notification",
 			notificationType: "idle_prompt",
+		});
+
+		expect(result.exitCode).toBe(0);
+		expect(result.stderr.toString()).toBe("");
+	});
+
+	it("ignores subagent hooks in the Windows Node hook", () => {
+		const result = runNotifyNodeHook({
+			hook_event_name: "PostToolUse",
+			session_id: "main-session",
+			agent_id: "subagent-id",
 		});
 
 		expect(result.exitCode).toBe(0);

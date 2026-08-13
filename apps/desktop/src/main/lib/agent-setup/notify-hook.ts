@@ -6,9 +6,9 @@ import { HOOKS_DIR } from "./paths";
 export const NOTIFY_SCRIPT_NAME = "notify.sh";
 export const WINDOWS_NOTIFY_SCRIPT_NAME = "notify.cmd";
 export const WINDOWS_NOTIFY_NODE_SCRIPT_NAME = "notify.mjs";
-export const NOTIFY_SCRIPT_MARKER = "# Superset agent notification hook v7";
+export const NOTIFY_SCRIPT_MARKER = "# Superset agent notification hook v8";
 export const WINDOWS_NOTIFY_SCRIPT_MARKER =
-	"rem Superset agent notification hook v7";
+	"rem Superset agent notification hook v8";
 
 const NOTIFY_SCRIPT_TEMPLATE_PATH = path.join(
 	__dirname,
@@ -141,6 +141,9 @@ async function main() {
   if (!env("SUPERSET_TERMINAL_ID") && !env("SUPERSET_TAB_ID")) return;
 
   const payload = parsePayload(await readInput());
+  const subagentId = field(payload, ["agent_id"]);
+  if (subagentId) return;
+
   const hookSessionId = field(payload, ["session_id", "sessionId"]);
   const resourceId = field(payload, ["resourceId", "resource_id"]);
   const sessionId = resourceId || hookSessionId || field(payload, ["thread-id", "thread_id"]);

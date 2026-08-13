@@ -25,9 +25,8 @@ export function DownloadInterstitial() {
 	const firedRef = useRef(false);
 
 	const isMac = isMacPlatform(platform);
-	// Only auto-download on Mac (the only published desktop installer).
-	// Windows/Linux/Mobile see installer-specific guidance instead — never the
-	// .dmg. Unknown waits for detection.
+	// Only auto-download on Mac (the only built binary). Windows/Linux/Mobile see
+	// the waitlist instead, never the .dmg. Unknown waits for detection.
 	const showWaitlist = !isMac && platform !== Platform.Unknown;
 
 	useEffect(() => {

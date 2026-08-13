@@ -34,8 +34,8 @@ mock.module("shared/env.shared", () => ({
 mock.module("./notify-hook", () => ({
 	NOTIFY_SCRIPT_NAME: "notify.sh",
 	WINDOWS_NOTIFY_SCRIPT_NAME: "notify.cmd",
-	NOTIFY_SCRIPT_MARKER: "# Superset agent notification hook v7",
-	WINDOWS_NOTIFY_SCRIPT_MARKER: "rem Superset agent notification hook v7",
+	NOTIFY_SCRIPT_MARKER: "# Superset agent notification hook v8",
+	WINDOWS_NOTIFY_SCRIPT_MARKER: "rem Superset agent notification hook v8",
 	getNotifyScriptPath: (platform: NodeJS.Platform = process.platform) =>
 		path.join(
 			TEST_HOOKS_DIR,
@@ -43,7 +43,7 @@ mock.module("./notify-hook", () => ({
 		),
 	getNotifyScriptContent: () => "#!/bin/bash\nexit 0\n",
 	getWindowsNotifyCommandScriptContent: () =>
-		'@echo off\r\nrem Superset agent notification hook v7\r\nnode.exe "%~dp0notify.mjs" %*\r\n',
+		'@echo off\r\nrem Superset agent notification hook v8\r\nnode.exe "%~dp0notify.mjs" %*\r\n',
 	getNotifyNodeScriptContent: () =>
 		'JSON.parse\nmethod: "POST"\nSUPERSET_HOST_AGENT_HOOK_URL\nSUPERSET_AGENT_ID\n/hook/complete\n',
 	createNotifyScript: () => {},

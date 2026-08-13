@@ -2,7 +2,7 @@
 
 Yet another unofficial native-Windows fork of [Superset](https://github.com/superset-sh/superset).
 
-This should serve as a stop-gap until superset-sh officially adds support for Windows. 
+This should serve as a stop-gap until superset-sh officially adds support for Windows.
 
 Every Windows-specific change (and the handful of unrelated bug fixes/features)
 is catalogued in [`docs/windows-port-patch-list.md`](docs/windows-port-patch-list.md).
