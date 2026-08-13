@@ -580,7 +580,9 @@ For **each** patch entry:
   `bf6fedd63` (2026-07-31 merge: upstream #6026 now sends initial-command text
   and a delayed bare `\r` Enter as separate writes. Adopted that path; it
   preserves the PowerShell invariant without `appendShellLineEnding` at this
-  call site.)
+  call site.); `d6e9ac9cd` (2026-08-13: disable the POSIX echo verifier for
+  ConPTY initial commands so preset text is not cleared and retyped when
+  PowerShell/cmd cannot provide the expected echo evidence.)
 - **Override policy:** **LOCKED** (PSReadLine keystroke semantics).
 - **Why:** PSReadLine accepts the line on the CR, then treats the trailing LF of
   a CRLF as a fresh keystroke — stranding a `>>` continuation prompt. A lone CR
@@ -588,16 +590,21 @@ For **each** patch entry:
   as-is.
 - **Invariant:** `getShellLineEnding` returns a lone CR for pwsh.
   `queueInitialCommand` sends command text and a delayed bare `\r` as separate
-  writes; other host-service command launches use `appendShellLineEnding`.
+  writes. On Windows, it waits for output quiescence without running the POSIX
+  command-echo verifier; other host-service command launches use
+  `appendShellLineEnding`.
   Known gap: the renderer's shell-agnostic `normalizeTerminalCommand` still
   appends a bare LF (`writeInput` path) — a no-op accept on pwsh; give it shell
   awareness if that path is exercised on Windows.
 - **Where:** `packages/shared/src/shell.ts` (`getShellLineEnding`);
-  `packages/host-service/src/terminal/terminal.ts` (`queueInitialCommand`).
+  `packages/host-service/src/terminal/terminal.ts` (`queueInitialCommand`);
+  `packages/host-service/src/terminal/initial-command-echo.ts`.
 - **Scan for:** new command-write paths hardcoding CRLF/LF for pwsh instead of
-  going through `getShellLineEnding`; changes to `getShellLineEnding`.
+  going through `getShellLineEnding`; changes to `getShellLineEnding`; Windows
+  initial-command paths that enable `commandEchoProbe` or send Ctrl+U retries.
 - **Symptom if broken:** after a terminal preset (e.g. one that runs `clear`) or
-  agent-button launch, the shell strands a `>>` you must clear before typing.
+  agent-button launch, the shell strands a `>>` you must clear before typing,
+  or renders repeated text such as `claude^Uclaude^Uclaude`.
 
 ## W20 — V2 agent launch commands quoted for the target shell
 
