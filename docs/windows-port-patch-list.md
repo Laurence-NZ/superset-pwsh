@@ -160,7 +160,9 @@ For **each** patch entry:
 
 ## W2 — Native rebuild pin: `native-keymap` patch + node-pty/winpty
 
-- **Commits:** `ee5eda5c5`
+- **Commits:** `ee5eda5c5`; `b03ccec62` (kept the native-keymap patch while
+  merging upstream's xterm WebGL patch into the same `patchedDependencies`
+  object, so Bun applies both.)
 - **Override policy:** **OVERRIDABLE.** Trigger: upstream bumps `native-keymap`
   past `3.3.9`. If it does, notify the user — the pinned patch can likely be
   dropped for the upstream version.
@@ -193,7 +195,9 @@ For **each** patch entry:
   Windows Node dispatcher and covered it with native subprocess tests);
   `30d3492f4`, `11ab27237`, `9331743cc` (kept the Windows dispatcher and tests
   aligned with upstream's Superset-terminal scope, Codex thread ID, and v1
-  lifecycle payload fields.); `ff5531ef4` (linted the merged hook tests.)
+  lifecycle payload fields.); `ff5531ef4` (linted the merged hook tests.);
+  `b03ccec62` (mirrored upstream's Claude `agent_id` subagent filter in the
+  Windows Node dispatcher and its native subprocess tests.)
 - **Override policy:** **LOCKED** (Windows-specific command construction).
 - **Invariant:** Each managed notify-hook resolves to a Windows-runnable
   entrypoint (`notify.cmd` / Node dispatcher) rather than a bare POSIX `.sh`.
@@ -205,7 +209,8 @@ For **each** patch entry:
   `notify-hook.ts`; agent notify-hook setup.
 - **Scan for:** new notify-hook command construction that emits `bash …` / `.sh`
   with no `.cmd`/Node Windows branch, or a new payload field spelling handled
-  only by `notify-hook.template.sh` and not the Windows Node dispatcher.
+  only by `notify-hook.template.sh` and not the Windows Node dispatcher,
+  including event-suppression fields such as Claude's `agent_id`.
 
 ## W5 — repoPath-keyed setup override works on Windows
 
