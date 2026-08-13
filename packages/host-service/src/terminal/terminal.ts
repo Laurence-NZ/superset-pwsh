@@ -53,6 +53,7 @@ import {
 	shellLaunchExpectsReadyMarker,
 	waitForTerminalBaseEnv,
 } from "./env.ts";
+import { shouldVerifyInitialCommandEcho } from "./initial-command-echo.ts";
 import { listTerminalResourceSessions } from "./resource-sessions.ts";
 import {
 	getShellReadyMarkerEvidence,
@@ -2040,7 +2041,7 @@ function queueInitialCommand(
 			void typeInitialCommandUngated(
 				session,
 				typedText,
-				commandEchoProbe(typedText),
+				shouldVerifyInitialCommandEcho() ? commandEchoProbe(typedText) : null,
 				dropStagedFiles,
 				isDefunct,
 			);

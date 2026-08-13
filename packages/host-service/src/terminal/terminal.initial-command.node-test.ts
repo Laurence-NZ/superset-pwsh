@@ -38,6 +38,7 @@ const SOCK = makeTestDaemonSocketPath("host-svc-initcmd");
 const MIGRATIONS = path.resolve(__dirname, "../../drizzle");
 const TEST_SHELL = IS_WINDOWS ? (process.env.COMSPEC ?? "cmd.exe") : "/bin/sh";
 const testPosix = IS_WINDOWS ? test.skip : test;
+const testWindows = IS_WINDOWS ? test : test.skip;
 
 let server: Server;
 let db: HostDb;
@@ -103,6 +104,35 @@ after(async () => {
 });
 
 describe("initialCommand delivery", () => {
+	testWindows(
+		"Windows types an ungated initialCommand once without Ctrl+U retries",
+		async () => {
+			const terminalId = `e2e-win-once-${randomUUID().slice(0, 8)}`;
+			const id = randomUUID().slice(0, 6);
+			const outFile = path.join(TEST_HOME, `win-once-${terminalId}`);
+			const command = `echo run-${id} > "${outFile}"`;
+
+			const session = await createTerminalSessionInternal({
+				terminalId,
+				workspaceId,
+				db,
+				listed: true,
+				initialCommand: command,
+			});
+			assert.ok(!("error" in session), "error" in session ? session.error : "");
+			if ("error" in session) return;
+
+			await waitFor(() => fs.existsSync(outFile), 10_000);
+			const snap = await snapshotSession({ terminalId, workspaceId, db });
+			assert.ok(!("error" in snap), JSON.stringify(snap));
+			if ("error" in snap) return;
+			assert.equal(snap.text.split(command).length - 1, 1, snap.text);
+			assert.ok(!snap.text.includes("^U"), snap.text);
+
+			await disposeSessionAndWait(terminalId, db);
+		},
+	);
+
 	testPosix(
 		"a >2KB initialCommand executes fully (no MAX_CANON truncation)",
 		async () => {
