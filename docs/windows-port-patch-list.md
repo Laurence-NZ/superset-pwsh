@@ -1063,26 +1063,28 @@ For **each** patch entry:
 
 ## W34 — Retry managed folder deletion after terminal shutdown
 
-- **Commits:** `f279800a5`; `55efa4998` (releases server-owned git watches and
-  client filesystem subscriptions before directory removal.); `ff5a0b0da`
-  (keeps the cleanup unit-test event bus aligned with the watcher-release
-  contract.); this documentation commit (records the packaged-app `EBUSY`
-  reproduction and the reverted watcher-handshake history.)
+- **Commits:** `f279800a5`; `55efa4998` (requests release of server-owned git
+  watches and client filesystem subscriptions before directory removal.);
+  `ff5a0b0da` (keeps the cleanup unit-test event bus aligned with the watcher
+  cleanup contract.); `08e233b2f` and this follow-up documentation commit
+  (record the packaged-app `EBUSY` investigation, failed reproduction attempts,
+  and reverted watcher-handshake history.)
 - **Override policy:** **OVERRIDABLE.** Adopt upstream when session-folder
   deletion runs off-loop with equivalent transient-lock retries.
 - **Invariant:** Session folders and residual worktree directories use the same
   recursive removal task: five retries with a 100 ms delay. Session deletion
   must not synchronously remove a potentially large tree on the host event loop.
-  All workspace watcher layers are released before either removal path begins.
+  Workspace deletion requests cleanup of every watcher layer before removal,
+  but the current implementation does not await native watcher release.
 - **Where:** `packages/host-service/src/workers/tasks/filesystem.ts` and the
   session branch in `trpc/router/workspace-cleanup/workspace-cleanup.ts`;
   `events/git-watcher.ts`; `events/event-bus.ts`; diagnostic handoff in
   `docs/windows-workspace-delete-ebusy-reproduction.md`.
 - **Scan for:** direct recursive `rm` calls in either workspace deletion path,
-  removal of the filesystem task from the host-worker registry, or a
-  fire-and-forget watcher unsubscribe that permits removal to race the isolated
-  watcher's native handle release. `f1ef8d488` added an acknowledgement but was
-  reverted by `dd5676bd3`; investigate the revert before restoring it.
+  removal of the filesystem task from the host-worker registry, or changes to
+  watcher cleanup ordering. `f1ef8d488` added an acknowledgement but
+  was reverted by `dd5676bd3`; the suspended-watcher test did not reproduce the
+  failure, so require live handle evidence before restoring it.
 - **Symptom if broken:** deleting a Session intermittently fails on Windows with
   `EPERM`, `EBUSY`, or `ENOTEMPTY` immediately after its terminal is closed.
 
