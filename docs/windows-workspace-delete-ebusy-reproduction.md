@@ -129,6 +129,39 @@ A complete verification gate must show the same real UI journey failing before
 the fix and succeeding after it under equivalent process, watcher, and
 filesystem observations.
 
+## Resume checklist
+
+Investigation paused on 2026-08-14. No Superset UI reproduction exists yet, and
+no production fix should be attempted from the current evidence.
+
+Resume with these options, in priority order:
+
+1. **Capture normal use with Process Monitor.** Filter paths under
+   `D:\stash\superset-wt`, retain sharing-violation, lock-violation, and
+   access-denied results, and stop capture immediately after a natural failure.
+   This is the best chance of identifying a short-lived owner that exits before
+   manual inspection.
+2. **Add diagnostic-only deletion logging.** Without changing cleanup timing or
+   retry behavior, log phase timestamps, terminal IDs and PIDs, watcher cleanup
+   requests, Git removal results, worktree registration, residual removal
+   errors, and the remaining Superset process tree.
+3. **Run a real packaged-UI soak matrix.** Repeatedly create and delete
+   disposable workspaces while varying Files-tab state, terminal and agent
+   activity, setup scripts, package managers, dev servers, time since process
+   shutdown, and total app-session age. Record the delete-branch checkbox only
+   as a control variable.
+4. **Classify ownership after a natural failure.** Capture evidence first, then
+   test whether fully exiting Superset releases the directory. If it does,
+   isolate the host service, PTY daemon, and watcher processes. If it does not,
+   inspect external tools and filesystem filters before rebooting.
+5. **Use deliberate fault injection only to test recovery.** A diagnostic build
+   may intentionally hold the directory before residual removal to exercise the
+   rollback path, but that does not reproduce or explain the natural bug.
+
+The first useful milestone is not a code fix. It is either a repeatable real UI
+journey or a Process Monitor trace that identifies the process and operation at
+the natural failure timestamp.
+
 ## Prior implementation and revert
 
 The branch previously implemented a watcher synchronization mechanism:

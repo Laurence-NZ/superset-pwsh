@@ -1066,9 +1066,10 @@ For **each** patch entry:
 - **Commits:** `f279800a5`; `55efa4998` (requests release of server-owned git
   watches and client filesystem subscriptions before directory removal.);
   `ff5a0b0da` (keeps the cleanup unit-test event bus aligned with the watcher
-  cleanup contract.); `08e233b2f` and this follow-up documentation commit
-  (record the packaged-app `EBUSY` investigation, failed reproduction attempts,
-  and reverted watcher-handshake history.)
+  cleanup contract.); `08e233b2f`, `9e5dccfa8`, and this resume-checklist
+  documentation commit (record the packaged-app `EBUSY` investigation, failed
+  reproduction attempts, paused-state options, and reverted watcher-handshake
+  history.)
 - **Override policy:** **OVERRIDABLE.** Adopt upstream when session-folder
   deletion runs off-loop with equivalent transient-lock retries.
 - **Invariant:** Session folders and residual worktree directories use the same
