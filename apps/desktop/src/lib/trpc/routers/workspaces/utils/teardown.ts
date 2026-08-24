@@ -1,11 +1,11 @@
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { getKnownShell } from "@superset/shared/shell";
 import {
 	getCommandShellArgs,
 	getShellEnv,
 } from "@superset/agent-setup/shell-wrappers";
+import { getKnownShell } from "@superset/shared/shell";
 import { buildSafeEnv, sanitizeEnv } from "main/lib/terminal/env";
 import { SUPERSET_DIR_NAME } from "shared/constants";
 import { removeWorktree } from "./git";

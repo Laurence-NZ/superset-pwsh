@@ -1132,7 +1132,9 @@ notify the user and switch to theirs.
   badge cluster so it hides exactly when the actions appear.);
   `2b68b7c77` (2026-08-04 merge: upstream #6098 limited diff stats to the active
   workspace and #6021 added bulk selection. Retained the ↓N badge outside the
-  active-only gate and hid it while a row is selected.)
+  active-only gate and hid it while a row is selected.); `5f031a4b7`
+  (2026-08-25 merge: retained the badge while restoring upstream's
+  focus-visible marquee behavior.)
 - **Override policy:** **OVERRIDABLE — and flagged DELETE ON MERGE.** Upstream
   `getBranchSyncStatus.pullCount` already exists; prefer wiring the sidebar to
   that (plus a fetch) over keeping this. If upstream ships a real ahead/behind
@@ -1219,7 +1221,9 @@ notify the user and switch to theirs.
 ## F6 — Force v2 on and lock the "Try Superset v2" opt-out toggle
 
 - **Commits:** `c1d3fc4df`; `2b68b7c77` (2026-08-04 merge: upstream added the
-  v1-to-v2 migration decision path; retained the fork's unconditional v2 gate.)
+  v1-to-v2 migration decision path; retained the fork's unconditional v2 gate.);
+  `5f031a4b7` (2026-08-25 merge: restored the migration-lock imports and updated
+  the fork-specific forced-v2 test.)
 - **Override policy:** **LOCKED for this fork.** This fork is v2-only on Windows
   (v1 untested), so we never want the opt-out. Not a candidate to switch to
   upstream — upstream deliberately keeps v1/v2 selectable.
@@ -1240,7 +1244,8 @@ notify the user and switch to theirs.
 
 ## F7 — Force auto-update off and lock the "Disable auto-update checks" toggle
 
-- **Commits:** `4b648216f`
+- **Commits:** `4b648216f`; `5f031a4b7` (2026-08-25 merge: removed the retired
+  Electric renderer URL helper while preserving the forced auto-update gate.)
 - **Override policy:** **LOCKED for this fork.** This fork is never published
   with a Windows release feed, so update checks can only fail. Not a candidate
   to switch to upstream — upstream ships real per-platform release manifests.
@@ -1368,7 +1373,9 @@ notify the user and switch to theirs.
 ## F13 — v2 OPEN_IN_APP hotkey registered at workspace level, not in the button
 
 - **Commits:** `e5d30ad43`; `30d3492f4`, `c4f5585d2` (kept the workspace-level
-  registration and normalized project-less sessions' nullable project ID.)
+  registration and normalized project-less sessions' nullable project ID.);
+  `5f031a4b7` (2026-08-25 merge: preserved the workspace-level registration
+  while adopting upstream's removal of legacy chat panes.)
 - **Override policy:** **OVERRIDABLE — expected to be fixed upstream; prefer
   theirs on sight.** This is a stopgap for a plain bug: upstream `616bb6796`
   (#5824) moved the Open-in button into the sidebar but left the hotkey
@@ -1412,7 +1419,9 @@ notify the user and switch to theirs.
   button has it, so a tight tab bar no longer squishes the Open-in button — and
   dropped a no-op `justify-center` the run button doesn't carry);
   `30d3492f4`, `2e53fc46c` (preserved the tab-bar variant while accepting
-  project-less workspaces and keeping one resolved app-state path.)
+  project-less workspaces and keeping one resolved app-state path.);
+  `5f031a4b7` (2026-08-25 merge: retained the tab-bar button while adopting
+  pages panes, layout-ready background-terminal gating, and legacy-chat removal.)
 - **Override policy:** **OVERRIDABLE — stopgap, expect this area to move again.**
   Preference, not a bug: upstream `616bb6796` (#5824) deliberately moved the
   button into the sidebar's PR action header; this fork wants it always reachable
