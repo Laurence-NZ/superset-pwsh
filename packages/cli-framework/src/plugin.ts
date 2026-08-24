@@ -71,12 +71,12 @@ export function createCommandsPlugin(opts: CommandsPluginOptions): BunPlugin {
 
 				lines.push("", "export const commands = [");
 				for (const [i, match] of commandFiles.entries()) {
-					const path = match.split("/").slice(0, -1);
+					const path = match.replaceAll("\\", "/").split("/").slice(0, -1);
 					lines.push(`\t{ path: ${JSON.stringify(path)}, command: cmd${i} },`);
 				}
 				lines.push("];", "", "export const groups = [");
 				for (const [i, match] of metaFiles.entries()) {
-					const path = match.split("/").slice(0, -1);
+					const path = match.replaceAll("\\", "/").split("/").slice(0, -1);
 					lines.push(`\t{ path: ${JSON.stringify(path)}, ...meta${i} },`);
 				}
 				lines.push(

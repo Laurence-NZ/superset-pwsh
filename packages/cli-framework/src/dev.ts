@@ -28,7 +28,7 @@ export async function runDev(argv: string[]): Promise<void> {
 			default: CliCommand["command"];
 		};
 		commands.push({
-			path: file.split("/").slice(0, -1),
+			path: file.replaceAll("\\", "/").split("/").slice(0, -1),
 			command: mod.default,
 		});
 	}
@@ -39,7 +39,7 @@ export async function runDev(argv: string[]): Promise<void> {
 			default: Omit<CliGroup, "path">;
 		};
 		groups.push({
-			path: file.split("/").slice(0, -1),
+			path: file.replaceAll("\\", "/").split("/").slice(0, -1),
 			...mod.default,
 		});
 	}
