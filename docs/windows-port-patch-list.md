@@ -1516,3 +1516,21 @@ notify the user and switch to theirs.
   `~/.claude/skills`.
 - **Symptom if broken:** launching either a development or packaged desktop
   build recreates `~/.claude/skills/superset`.
+
+## F19 - Remove the orphaned Anthropic runtime-env test
+
+- **Commits:** `d5ba6f816`
+- **Override policy:** **OVERRIDABLE.** Drop this entry when upstream removes
+  the orphaned test or restores an equivalent implementation with valid tests.
+- **Invariant:**
+  `packages/host-service/src/providers/model-providers/utils/anthropic-runtime-env/`
+  does not contain a test that imports the deleted `anthropic-runtime-env`
+  module. The legacy provider implementation and barrel remain deleted.
+- **Where:**
+  `packages/host-service/src/providers/model-providers/utils/anthropic-runtime-env/anthropic-runtime-env.test.ts`
+  is absent.
+- **Scan for:** the orphaned test returning without its implementation, or a
+  replacement provider implementation added without corresponding coverage.
+- **Verify:** `bun run typecheck` completes host-service declaration generation.
+- **Symptom if broken:** `@superset/host-service#build:types` fails with
+  `TS2307: Cannot find module './anthropic-runtime-env'`.
