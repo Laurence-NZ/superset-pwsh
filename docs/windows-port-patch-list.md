@@ -198,15 +198,19 @@ For **each** patch entry:
   lifecycle payload fields.); `ff5531ef4` (linted the merged hook tests.);
   `b03ccec62` (mirrored upstream's Claude `agent_id` subagent filter in the
   Windows Node dispatcher and its native subprocess tests.)
+  `8143283f1` (2026-08-25 merge: upstream moved agent setup into
+  `packages/agent-setup` and dropped the Windows wrapper/dispatcher branches;
+  restored them in the shared package, including call-time manifest endpoint
+  healing and native wrapper/dispatcher tests.)
 - **Override policy:** **LOCKED** (Windows-specific command construction).
 - **Invariant:** Each managed notify-hook resolves to a Windows-runnable
   entrypoint (`notify.cmd` / Node dispatcher) rather than a bare POSIX `.sh`.
   The Node dispatcher matches the shell hook's Superset-terminal gate and
   accepts each payload spelling, including Grok camelCase and Codex `thread-id`.
   Built in shared agent-wrapper helpers, not per-caller.
-- **Where:** `apps/desktop/src/main/lib/agent-setup/agent-wrappers-common.ts`
+- **Where:** `packages/agent-setup/src/agent-wrappers-common.ts`
   (`getManagedNotifyHookCommand` / `buildNotifyHookCommand`);
-  `notify-hook.ts`; agent notify-hook setup.
+  `packages/agent-setup/src/notify-hook.ts`; agent notify-hook setup.
 - **Scan for:** new notify-hook command construction that emits `bash …` / `.sh`
   with no `.cmd`/Node Windows branch, or a new payload field spelling handled
   only by `notify-hook.template.sh` and not the Windows Node dispatcher,
@@ -316,7 +320,7 @@ For **each** patch entry:
   hooks manually. Wrapper and shared hook-script writers still run; they do not
   mutate agent-owned config. Windows-capable notify commands remain disabled by
   preference, not by command limitations.
-- **Where:** `apps/desktop/src/main/lib/agent-setup/agent-wrappers-{amp,claude-codex-opencode,cursor,droid,gemini,grok,kimi,mastra,pi,vibe}.ts`.
+- **Where:** `packages/agent-setup/src/agent-wrappers-{amp,claude-codex-opencode,cursor,droid,gemini,grok,kimi,mastra,pi,vibe}.ts`.
 - **Scan for:** any win32 path that creates, edits, or removes an agent-global
   hook file, including new per-agent setup/teardown actions. Keep wrapper and
   shared hook-script generation enabled.
@@ -326,8 +330,8 @@ For **each** patch entry:
   to the relevant agent because its unfiltered Pi install assertion expects the
   global file write that W11 intentionally skips:
   ```powershell
-  bun test apps/desktop/src/main/lib/agent-setup/notify-hook.test.ts
-  bun test apps/desktop/src/main/lib/agent-setup/agent-wrappers.test.ts --test-name-pattern grok
+  bun test packages/agent-setup/src/notify-hook.test.ts
+  bun test packages/agent-setup/src/agent-wrappers.test.ts --test-name-pattern grok
   ```
 - **Opt-in re-enable (standalone script):** since the app skips auto-inject on
   win32, users wire the Claude hooks on demand with
@@ -1494,7 +1498,9 @@ notify the user and switch to theirs.
 
 ## F18 — Do not install Superset skills into Claude Code globally
 
-- **Commits:** `49fe57d2c`.
+- **Commits:** `49fe57d2c`; `1628ba62c` (2026-08-25 merge: retained the
+  no-global-Claude-plugin policy after agent setup moved to
+  `packages/agent-setup`).
 - **Override policy:** **KEEP.** This fork deliberately avoids adding a
   Superset plugin to the user's global Claude Code skill directory. Do not
   restore upstream provisioning unless the user explicitly opts back in.
@@ -1503,7 +1509,7 @@ notify the user and switch to theirs.
   sentinel proves the app owns it, preserving any user-owned directory at the
   same path. Provisioning into `~/.agents/skills` and
   `~/.agents/commands/superset` remains enabled.
-- **Where:** `apps/desktop/src/main/lib/agent-setup/managed-skills.ts` and its
+- **Where:** `packages/agent-setup/src/managed-skills.ts` and its
   co-located test.
 - **Scan for:** `provisionClaudePlugin`, a desired Claude skill named
   `superset`, or another startup path that copies `plugins/superset` into
