@@ -21,6 +21,8 @@ An agentic IDE is a development environment where AI agents can autonomously pla
 
 The term is new and a little overloaded, so this guide defines it clearly, separates the two things people mean by it, and explains how to choose.
 
+One of those meanings now has its own acronym. An **ADE**, or agent development environment, is a tool organized around agent tasks, isolated workspaces, and review rather than a human editing one working copy. See [What Is an ADE?](/compare/what-is-an-agent-development-environment) for the full definition.
+
 ---
 
 ## Autocomplete vs Agent
@@ -60,6 +62,8 @@ Both are legitimately agentic. The difference is whether the editor or the agent
 The moment you run more than one agent on the same repository, a new problem appears: collisions. Two agents editing the same working directory will overwrite each other's changes and tangle their branches.
 
 The clean solution is a **Git worktree per task**. A worktree gives each agent its own directory and branch that share the same repository history, so agents can work in parallel without stepping on each other. You review each worktree's diff independently and merge the ones you want.
+
+![The worktree-per-task pattern: one repository, an isolated worktree and branch per agent, independent diffs converging into review and merge](/images/guides/worktree-isolation.svg)
 
 This is why the strongest multi-agent IDEs are built around worktrees. It is also the dividing line in the category: some tools isolate parallel work in local worktrees ([Superset](/compare/superset-vs-orca), Orca, Conductor, and Cursor 2.0), some push isolation to the cloud as a branch and a pull request (Copilot, Devin, JetBrains), and some edit the working copy with review gating (Zed and most in-editor agent modes).
 

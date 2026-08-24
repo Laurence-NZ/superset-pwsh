@@ -186,3 +186,31 @@ The `src/components/ui/` and `src/components/ai-elements` directories contain sh
 - Agents may run `drizzle-kit generate` themselves after modifying schema files in `packages/db/src/schema/` — follow the workflow (Neon branch setup, drizzle-kit invocation) in `.agents/skills/db-migrations/SKILL.md`.
 - **NEVER manually edit files in `packages/db/drizzle/`** (`.sql` files, `meta/_journal.json`, snapshots — all auto-generated; hand-edits only with explicit user confirmation).
 - **NEVER apply or run migrations against a shared or production database** — migrations apply through the normal deploy flow.
+
+## Orchestrating agents and workspaces
+
+Use the `superset` CLI for isolated environments, parallel agents, and long-running
+jobs. It is already on `PATH` in Superset terminals.
+
+```bash
+superset ws create --project PROJECT_ID --branch BRANCH --agent claude --prompt "..."
+superset agents create --workspace WORKSPACE_ID --agent claude --prompt "..."
+superset ws list
+superset terminals read --workspace WORKSPACE_ID --terminal TERMINAL_ID
+superset ws delete WORKSPACE_ID
+```
+
+Replace the placeholders before running commands. Use `superset <command> --help`
+for tasks, automations, hosts, settings, and other commands. Pass `--json` for
+parsable output; agent environments enable it by default.
+
+## Further reading
+
+- `.agents/skills/`: task-specific workflows.
+- `docs/agent-tooling.md`: commands, skills, and per-agent CLI configuration.
+- `apps/desktop/AGENTS.md`: desktop notices and persisted renderer state.
+- `apps/mobile/AGENTS.md`: mobile structure and iOS-only scope.
+- `docs/cloud-sandbox-mismatches.md`: host assumptions that do not fit cloud
+  sandboxes. Read and update it when working on sandbox behavior.
+- `docs/cloud-sandbox-considerations.md`: remaining sandbox constraints around
+  billing, credentials, and untested behavior.

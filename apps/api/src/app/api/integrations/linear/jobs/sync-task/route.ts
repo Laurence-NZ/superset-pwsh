@@ -12,15 +12,9 @@ import {
 	getLinearClient,
 	mapPriorityToLinear,
 } from "@superset/trpc/integrations/linear";
-import { Receiver } from "@upstash/qstash";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull, lt, or } from "drizzle-orm";
 import { z } from "zod";
-import { env } from "@/env";
-
-const receiver = new Receiver({
-	currentSigningKey: env.QSTASH_CURRENT_SIGNING_KEY,
-	nextSigningKey: env.QSTASH_NEXT_SIGNING_KEY,
-});
+import { verifyQstashRequest } from "@/lib/verifyQstash";
 
 const payloadSchema = z.object({
 	taskId: z.string().min(1),
@@ -161,16 +155,34 @@ async function syncTaskToLinear(
 				return { success: false, error: "Issue not returned" };
 			}
 
+			const externalUpdatedAt = new Date(issue.updatedAt);
 			await db
 				.update(tasks)
 				.set({
 					// Linear derives branchName from identifier + title, so a
 					// title update can change it.
 					branch: issue.branchName || null,
+					externalUpdatedAt,
 					lastSyncedAt: new Date(),
 					syncError: null,
 				})
-				.where(eq(tasks.id, task.id));
+				.where(
+					and(
+						eq(tasks.id, task.id),
+						// The watermark only moves forward. This push goes out
+						// through QStash and can be retried, so its response can
+						// arrive after a webhook that already recorded something
+						// newer — writing ours unconditionally would drag the
+						// watermark back and let the next stale delivery through
+						// the guard that exists to stop it. Skipping costs
+						// nothing: the webhook that overtook us set lastSyncedAt
+						// and cleared syncError on its way past.
+						or(
+							isNull(tasks.externalUpdatedAt),
+							lt(tasks.externalUpdatedAt, externalUpdatedAt),
+						),
+					),
+				);
 
 			return {
 				success: true,
@@ -223,6 +235,7 @@ async function syncTaskToLinear(
 				externalKey: issue.identifier,
 				externalUrl: issue.url,
 				branch: issue.branchName || null,
+				externalUpdatedAt: new Date(issue.updatedAt),
 				lastSyncedAt: new Date(),
 				syncError: null,
 			})
@@ -249,29 +262,12 @@ async function syncTaskToLinear(
 
 export async function POST(request: Request) {
 	const body = await request.text();
-	const signature = request.headers.get("upstash-signature");
-
-	if (!signature) {
-		return Response.json({ error: "Missing signature" }, { status: 401 });
-	}
-
-	try {
-		const isValid = await receiver.verify({
-			body,
-			signature,
-			url: `${env.NEXT_PUBLIC_API_URL}/api/integrations/linear/jobs/sync-task`,
-		});
-
-		if (!isValid) {
-			return Response.json({ error: "Invalid signature" }, { status: 401 });
-		}
-	} catch (verifyError) {
-		console.error("[sync-task] Signature verification failed:", verifyError);
-		return Response.json(
-			{ error: "Signature verification failed" },
-			{ status: 401 },
-		);
-	}
+	const rejected = await verifyQstashRequest(
+		request,
+		body,
+		"/api/integrations/linear/jobs/sync-task",
+	);
+	if (rejected) return rejected;
 
 	const parsed = payloadSchema.safeParse(JSON.parse(body));
 	if (!parsed.success) {

@@ -110,7 +110,6 @@ export function useV2PresetExecution({
 		{ id: workspaceId },
 		{
 			refetchOnWindowFocus: false,
-			retry: false,
 		},
 	);
 	const writeInput = workspaceTrpc.terminal.writeInput.useMutation();

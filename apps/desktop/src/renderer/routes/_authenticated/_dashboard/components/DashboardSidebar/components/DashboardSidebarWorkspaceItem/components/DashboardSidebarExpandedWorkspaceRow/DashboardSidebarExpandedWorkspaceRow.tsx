@@ -14,6 +14,7 @@ import {
 	HiMiniMinus,
 	HiMiniXMark,
 } from "react-icons/hi2";
+import { WorkspaceNameMarquee } from "renderer/components/WorkspaceNameMarquee";
 import { useCommitsToPull } from "renderer/hooks/host-service/useCommitsToPull";
 import type { DiffStats } from "renderer/hooks/host-service/useDiffStats";
 import { HotkeyLabel } from "renderer/hotkeys";
@@ -300,17 +301,19 @@ export const DashboardSidebarExpandedWorkspaceRow = forwardRef<
 								)}
 							/>
 						) : (
-							<span
-								className={cn(
-									"truncate text-[13px] leading-tight transition-colors",
-									isActive || isSelected
-										? "text-foreground"
-										: "text-foreground/80",
-								)}
-							>
-								{name || branch}
+							<>
+								<WorkspaceNameMarquee
+									name={name || branch}
+									forceActive={isFocused}
+									className={cn(
+										"text-[13px] leading-tight transition-colors",
+										isActive || isSelected
+											? "text-foreground"
+											: "text-foreground/80",
+									)}
+								/>
 								{isSelected && <span className="sr-only">, selected</span>}
-							</span>
+							</>
 						)}
 
 						<div className="col-start-2 row-start-1 grid h-5 shrink-0 items-center justify-items-end [&>*]:col-start-1 [&>*]:row-start-1">

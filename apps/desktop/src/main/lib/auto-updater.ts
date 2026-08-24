@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import { statfsSync } from "node:fs";
 import * as Sentry from "@sentry/electron/main";
 import { app, dialog } from "electron";
 import log from "electron-log/main";
@@ -7,6 +8,8 @@ import { env } from "main/env.main";
 import { setSkipQuitConfirmation } from "main/index";
 import { appState } from "main/lib/app-state";
 import { isAutoUpdateDisabledByRuntimeFlags } from "main/lib/desktop-runtime-flags";
+import { isEnvironmentUpdateError } from "main/lib/update-error-classification";
+import { redactUpdateError } from "main/lib/update-error-redaction";
 import { gte, prerelease } from "semver";
 import {
 	AUTO_UPDATE_STATUS,
@@ -85,31 +88,16 @@ function isNetworkError(error: Error | string): boolean {
 	return SILENT_ERROR_PATTERNS.some((pattern) => message.includes(pattern));
 }
 
-const ENVIRONMENT_ERRNO_CODES = [
-	"ENOENT",
-	"EACCES",
-	"EPERM",
-	"EBUSY",
-	"ENOSPC",
-];
-const UPDATER_PATH_MARKERS = ["-updater", "shipit"];
-
-// Update failures owned by the user's machine, not by us: a corrupt or
-// half-removed updater cache, an app bundle that can't be written, and stalled
-// requests. Squirrel and electron-updater surface these as plain messages
-// without errno properties, so match on the text.
-function isEnvironmentUpdateError(message: string): boolean {
-	const lowerMessage = message.toLowerCase();
-	if (
-		lowerMessage.includes("read-only volume") ||
-		lowerMessage.includes("the request timed out")
-	) {
-		return true;
+// Free bytes on the volume backing the updater caches, which sit beside our app
+// data. Returns null when the volume can't be queried, so an unknown answer
+// never reads as "out of space".
+function freeStagingBytes(): number | null {
+	try {
+		const { bavail, bsize } = statfsSync(app.getPath("userData"));
+		return bavail * bsize;
+	} catch {
+		return null;
 	}
-	return (
-		ENVIRONMENT_ERRNO_CODES.some((code) => message.includes(`${code}:`)) &&
-		UPDATER_PATH_MARKERS.some((marker) => lowerMessage.includes(marker))
-	);
 }
 
 // electron-updater starts the auto-download inside checkForUpdates and hands
@@ -396,8 +384,13 @@ export function setupAutoUpdater(): void {
 		);
 		void clearCachedUpdate(`error: ${error?.message ?? "unknown"}`);
 		emitStatus(AUTO_UPDATE_STATUS.ERROR, undefined, error.message);
-		if (!isEnvironmentUpdateError(error?.message ?? String(error))) {
-			Sentry.captureException(error);
+		if (
+			!isEnvironmentUpdateError(
+				error?.message ?? String(error),
+				freeStagingBytes(),
+			)
+		) {
+			Sentry.captureException(redactUpdateError(error));
 		}
 	});
 

@@ -6,9 +6,10 @@ import { Text } from "@/components/ui/text";
 import type { HostWorkspaceItem } from "@/hooks/useHostWorkspaces";
 import { useWorkspaceHost } from "@/hooks/useWorkspaceHost";
 import {
-	buildRelayHostUrl,
 	getHostServiceClientByUrl,
+	hostServiceUrl,
 } from "@/lib/host-service/client";
+import { posthog } from "@/lib/posthog";
 import { useStartWorkspaceTerminal } from "@/screens/(authenticated)/(home)/home/components/NewChatWidget/hooks/useStartWorkspaceTerminal";
 import { useNewSessionPreferencesStore } from "@/screens/(authenticated)/(home)/home/components/NewChatWidget/stores/newSessionPreferencesStore";
 import {
@@ -73,6 +74,11 @@ export function FinishReviewSheet() {
 	const submit = async () => {
 		if (!workspace || !host || comments.length === 0 || sending) return;
 		const prompt = composeReviewPrompt(message, comments);
+		const submitted = {
+			workspace_id: workspaceId,
+			comment_count: comments.length,
+			target: target === "new" ? "new_session" : "existing_session",
+		};
 		setSending(true);
 		try {
 			if (target === "new") {
@@ -87,17 +93,23 @@ export function FinishReviewSheet() {
 						message: { text: prompt, attachments: [] },
 						agentId,
 					},
-					{ onSuccess: () => clearWorkspace(workspaceId) },
+					{
+						onSuccess: () => {
+							posthog.capture("review_submitted", submitted);
+							clearWorkspace(workspaceId);
+						},
+					},
 				);
 				router.back();
 				return;
 			}
-			const hostUrl = buildRelayHostUrl(host.organizationId, host.machineId);
+			const hostUrl = hostServiceUrl(host.organizationId, host.machineId);
 			await getHostServiceClientByUrl(hostUrl).terminal.send.mutate({
 				terminalId: target,
 				workspaceId,
 				text: prompt,
 			});
+			posthog.capture("review_submitted", submitted);
 			clearWorkspace(workspaceId);
 			void queryClient.invalidateQueries({
 				queryKey: getHostTerminalsQueryKey(host.machineId),

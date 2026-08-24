@@ -1,1 +1,5 @@
-export { useWorkspacePullRequest } from "./useWorkspacePullRequest";
+export {
+	useWorkspacePullRequest,
+	useWorkspacePullRequests,
+	type WorkspacePullRequest,
+} from "./useWorkspacePullRequest";

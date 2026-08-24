@@ -1,14 +1,21 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useQuery } from "@tanstack/react-query";
-import { Stack, useRouter } from "expo-router";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Text } from "@/components/ui/text";
+import { useOrgHostsQuery } from "@/hooks/useOrgHosts";
 import { useTheme } from "@/hooks/useTheme";
-import { getHostServiceClientByUrl } from "@/lib/host-service/client";
-import { useNewChatTargets } from "@/screens/(authenticated)/(home)/home/components/NewChatWidget/hooks/useNewChatTargets";
+import { useSession } from "@/lib/auth/client";
+import {
+	getHostServiceClientByUrl,
+	hostServiceUrl,
+} from "@/lib/host-service/client";
+import { posthog } from "@/lib/posthog";
+import { apiClient } from "@/lib/trpc/client";
+import { CLOUD_TARGET_ID } from "@/screens/(authenticated)/(home)/home/components/NewChatWidget/hooks/useNewChatTargets";
 import { useNewSessionPreferencesStore } from "@/screens/(authenticated)/(home)/home/components/NewChatWidget/stores/newSessionPreferencesStore";
 
 function BranchRow({
@@ -22,7 +29,11 @@ function BranchRow({
 }) {
 	const theme = useTheme();
 	return (
-		<Pressable className="flex-row items-center gap-2 py-2.5" onPress={onPress}>
+		<Pressable
+			className="flex-row items-center gap-2 py-2.5"
+			onPress={onPress}
+			ph-label="new-session-branch-row"
+		>
 			<Text
 				className="flex-1 text-sm"
 				numberOfLines={1}
@@ -41,26 +52,58 @@ export function BranchPickerScreen() {
 	const router = useRouter();
 	const theme = useTheme();
 	const [query, setQuery] = useState("");
-	const { targets, defaultTarget } = useNewChatTargets();
-	const targetKey = useNewSessionPreferencesStore((state) => state.targetKey);
+	const params = useLocalSearchParams<{
+		projectId?: string;
+		machineId?: string;
+	}>();
 	const baseBranch = useNewSessionPreferencesStore((state) => state.baseBranch);
 	const setBaseBranch = useNewSessionPreferencesStore(
 		(state) => state.setBaseBranch,
 	);
 
-	const selectedTarget =
-		targets.find((target) => target.key === targetKey) ?? defaultTarget;
-	const hostUrl = selectedTarget?.hostUrl ?? null;
-	const projectId = selectedTarget?.projectId ?? null;
+	const isCloud = params.machineId === CLOUD_TARGET_ID;
+	const hostsQuery = useOrgHostsQuery();
+	const host =
+		!isCloud && params.machineId
+			? (hostsQuery.data?.find(
+					(entry) => entry.machineId === params.machineId,
+				) ?? null)
+			: null;
+	const hostUrl = host
+		? hostServiceUrl(host.organizationId, host.machineId)
+		: null;
+	const projectId = params.projectId || null;
+	const { data: session } = useSession();
+	const organizationId = session?.session?.activeOrganizationId ?? null;
 
 	const trimmedQuery = query.trim();
 	const { data, isLoading } = useQuery({
-		queryKey: ["host-service", "branches", hostUrl, projectId, trimmedQuery],
-		enabled: hostUrl !== null && projectId !== null,
+		queryKey: [
+			isCloud ? "cloud-branches" : "host-service",
+			"branches",
+			hostUrl,
+			projectId,
+			trimmedQuery,
+		],
+		enabled: projectId !== null && (isCloud ? !!organizationId : !!hostUrl),
 		placeholderData: (previous) => previous,
 		networkMode: "always" as const,
-		queryFn: async () => {
-			if (!hostUrl || !projectId) return null;
+		queryFn: async (): Promise<{
+			defaultBranch: string | null;
+			items: Array<{ name: string }>;
+		} | null> => {
+			if (!projectId) return null;
+			// A cloud target has no host holding a checkout; branches come from
+			// the GitHub remote through the API's App installation instead.
+			if (isCloud) {
+				if (!organizationId) return null;
+				return apiClient.cloudWorkspace.listBranches.query({
+					organizationId,
+					projectId,
+					query: trimmedQuery || undefined,
+				});
+			}
+			if (!hostUrl) return null;
 			return getHostServiceClientByUrl(
 				hostUrl,
 			).workspaceCreation.searchBranches.query({
@@ -72,6 +115,7 @@ export function BranchPickerScreen() {
 		},
 	});
 
+	const resolvingHost = !isCloud && !host && hostsQuery.isPending;
 	const defaultBranch = data?.defaultBranch ?? null;
 	const branches = useMemo(
 		() => (data?.items ?? []).filter((branch) => branch.name !== defaultBranch),
@@ -80,6 +124,9 @@ export function BranchPickerScreen() {
 
 	const selectAndClose = (branch: string | null) => {
 		setBaseBranch(branch);
+		posthog.capture("new_session_branch_selected", {
+			is_default_branch: branch === null || branch === defaultBranch,
+		});
 		router.back();
 	};
 
@@ -145,12 +192,15 @@ export function BranchPickerScreen() {
 						onPress={() => selectAndClose(branch.name)}
 					/>
 				))}
-				{isLoading && !data ? (
+				{(isLoading || resolvingHost) && !data ? (
 					<View className="items-center py-6">
 						<Spinner size="small" />
 					</View>
 				) : null}
-				{!isLoading && !defaultBranch && branches.length === 0 ? (
+				{!isLoading &&
+				!resolvingHost &&
+				!defaultBranch &&
+				branches.length === 0 ? (
 					<Text
 						className="py-6 text-center text-sm"
 						style={{ color: theme.mutedForeground }}

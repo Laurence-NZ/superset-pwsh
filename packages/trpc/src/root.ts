@@ -7,9 +7,12 @@ import { apiKeyRouter } from "./router/api-key";
 import { automationRouter } from "./router/automation";
 import { billingRouter } from "./router/billing";
 import { chatRouter } from "./router/chat";
+import { cloudWorkspaceRouter } from "./router/cloud-workspace";
 import { hostRouter } from "./router/host";
 import { integrationRouter } from "./router/integration";
 import { organizationRouter } from "./router/organization";
+import { pageRouter } from "./router/page";
+import { pageCommentRouter } from "./router/page-comment";
 import { supportRouter } from "./router/support/support";
 import { taskRouter } from "./router/task";
 import { teamRouter } from "./router/team";
@@ -27,9 +30,12 @@ export const appRouter = createTRPCRouter({
 	business: businessRouter,
 	billing: billingRouter,
 	chat: chatRouter,
+	cloudWorkspace: cloudWorkspaceRouter,
 	host: hostRouter,
 	integration: integrationRouter,
 	organization: organizationRouter,
+	page: pageRouter,
+	pageComment: pageCommentRouter,
 	support: supportRouter,
 	task: taskRouter,
 	team: teamRouter,

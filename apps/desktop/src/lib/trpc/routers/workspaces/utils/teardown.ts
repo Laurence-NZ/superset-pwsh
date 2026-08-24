@@ -5,7 +5,7 @@ import { getKnownShell } from "@superset/shared/shell";
 import {
 	getCommandShellArgs,
 	getShellEnv,
-} from "main/lib/agent-setup/shell-wrappers";
+} from "@superset/agent-setup/shell-wrappers";
 import { buildSafeEnv, sanitizeEnv } from "main/lib/terminal/env";
 import { SUPERSET_DIR_NAME } from "shared/constants";
 import { removeWorktree } from "./git";

@@ -32,9 +32,9 @@ import {
 import { useHotkeyDisplay } from "renderer/hotkeys";
 import { getOpenInFileManagerLabel } from "renderer/lib/file-manager-labels";
 import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
+import { useDashboardSidebarPortKill } from "../../../../hooks/useDashboardSidebarPortKill";
 import { useDashboardSidebarHoverActions } from "../../../../providers/DashboardSidebarHoverProvider";
 import { useDashboardSidebarWorkspacePorts } from "../../../../providers/DashboardSidebarPortsProvider";
-import { useDashboardSidebarPortKill } from "../../../DashboardSidebarPortsList/hooks/useDashboardSidebarPortKill";
 
 interface DashboardSidebarWorkspaceContextMenuProps {
 	workspaceId: string;
@@ -242,11 +242,8 @@ export function DashboardSidebarWorkspaceContextMenu({
 						Close all ports
 					</ContextMenuItem>
 				)}
-				<ContextMenuItem
-					onSelect={onRemoveFromSidebar}
-					className="text-destructive focus:text-destructive"
-				>
-					<LuX className="size-4 mr-2 text-destructive" />
+				<ContextMenuItem onSelect={onRemoveFromSidebar}>
+					<LuX className="size-4 mr-2" />
 					Remove from Sidebar
 				</ContextMenuItem>
 				{onDelete ? (

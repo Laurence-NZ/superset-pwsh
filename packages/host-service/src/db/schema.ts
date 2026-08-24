@@ -7,6 +7,7 @@ import { sql } from "drizzle-orm";
 import {
 	index,
 	integer,
+	primaryKey,
 	sqliteTable,
 	text,
 	uniqueIndex,
@@ -57,7 +58,9 @@ export const terminalAgentBindings = sqliteTable(
 		lastEventType: text("last_event_type").notNull(),
 		// Set when the agent session ended. "detached" = the agent reported its
 		// own end (SessionEnd hook) — not resumable; "terminal-exited" = the
-		// terminal died under it (kill, crash, reboot) — resume candidate.
+		// terminal died under it (kill, crash, reboot) — resume candidate;
+		// "resumed" = the candidate was consumed by an auto-resume; "disposed"
+		// = deliberately killed (pane close, CLI kill) — never resumable.
 		endedAt: integer("ended_at"),
 		endReason: text("end_reason"),
 	},
@@ -117,6 +120,10 @@ export const hostSettings = sqliteTable("host_settings", {
 	worktreeBaseDir: text("worktree_base_dir"),
 	branchPrefixMode: text("branch_prefix_mode").$type<BranchPrefixMode>(),
 	branchPrefixCustom: text("branch_prefix_custom"),
+	// Which provider login newly launched agents use, as the profile dir to
+	// inject (CLAUDE_CONFIG_DIR / CODEX_HOME). Null = the system default login.
+	defaultClaudeConfigDir: text("default_claude_config_dir"),
+	defaultCodexHome: text("default_codex_home"),
 });
 
 export const pullRequests = sqliteTable(
@@ -239,7 +246,6 @@ export const workspaces = sqliteTable(
 		updatedAt: integer("updated_at").notNull().default(0),
 		// Null = local changes not yet pushed to the cloud mirror (dual-write
 		// era only; the column and reconciler go away in R3).
-		cloudSyncedAt: integer("cloud_synced_at"),
 		// Tombstone: null = live. Set at the destroy commit point; rows are
 		// kept forever and surface on the board's Merged/Deleted columns.
 		archivedAt: integer("archived_at"),
@@ -262,13 +268,26 @@ export const workspaces = sqliteTable(
 );
 
 /**
- * Tombstones for workspaces deleted while the cloud was unreachable. The
- * reconciler drains this into `v2Workspace.delete` calls; rows are removed
- * once the cloud confirms. Dual-write era only — dropped in R3.
+ * Every pull request a workspace has ever been linked to, append-only.
+ * `workspaces.pullRequestId` stays the single "currently linked" pointer the
+ * sidebar shows (and Remove PR Link clears); this table is the memory that
+ * survives the pointer moving on — a workspace that opens a PR per branch
+ * accumulates one row each. Unlinking hides a PR from the sidebar, never
+ * from here.
  */
-export const workspaceCloudDeletes = sqliteTable("workspace_cloud_deletes", {
-	id: text().primaryKey(),
-	queuedAt: integer("queued_at")
-		.notNull()
-		.$defaultFn(() => Date.now()),
-});
+export const workspacePullRequests = sqliteTable(
+	"workspace_pull_requests",
+	{
+		workspaceId: text("workspace_id")
+			.notNull()
+			.references(() => workspaces.id, { onDelete: "cascade" }),
+		pullRequestId: text("pull_request_id")
+			.notNull()
+			.references(() => pullRequests.id, { onDelete: "cascade" }),
+		linkedAt: integer("linked_at").notNull(),
+	},
+	(table) => [
+		primaryKey({ columns: [table.workspaceId, table.pullRequestId] }),
+		index("workspace_pull_requests_workspace_idx").on(table.workspaceId),
+	],
+);

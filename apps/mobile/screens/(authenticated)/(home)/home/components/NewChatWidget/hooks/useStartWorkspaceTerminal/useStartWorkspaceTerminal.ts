@@ -4,9 +4,10 @@ import { Alert } from "react-native";
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import type { HostWorkspaceItem } from "@/hooks/useHostWorkspaces";
 import {
-	buildRelayHostUrl,
 	getHostServiceClientByUrl,
+	hostServiceUrl,
 } from "@/lib/host-service/client";
+import { posthog } from "@/lib/posthog";
 import { getHostTerminalsQueryKey } from "../../../../hooks/useHostTerminals";
 import type { ChatTarget } from "../../../../stores/chatTargetStore";
 
@@ -40,10 +41,7 @@ export function useStartWorkspaceTerminal(workspaces: HostWorkspaceItem[]) {
 					"Attachments are not supported in terminal sessions yet",
 				);
 			}
-			const hostUrl = buildRelayHostUrl(
-				workspace.organizationId,
-				target.hostId,
-			);
+			const hostUrl = hostServiceUrl(workspace.organizationId, target.hostId);
 			const client = getHostServiceClientByUrl(hostUrl);
 			const text = message.text.trim();
 
@@ -61,7 +59,12 @@ export function useStartWorkspaceTerminal(workspaces: HostWorkspaceItem[]) {
 				hostId: target.hostId,
 			};
 		},
-		onSuccess: ({ workspaceId, terminalId, hostId }) => {
+		onSuccess: ({ workspaceId, terminalId, hostId }, { agentId }) => {
+			posthog.capture("agent_session_launch", {
+				agent_type: agentId,
+				workspace_id: workspaceId,
+				result: "launched",
+			});
 			void queryClient.invalidateQueries({
 				queryKey: getHostTerminalsQueryKey(hostId),
 			});
@@ -69,7 +72,12 @@ export function useStartWorkspaceTerminal(workspaces: HostWorkspaceItem[]) {
 				`/(authenticated)/workspace/${workspaceId}?tab=${terminalId}`,
 			);
 		},
-		onError: (error) => {
+		onError: (error, { target, agentId }) => {
+			posthog.capture("agent_session_launch", {
+				agent_type: agentId,
+				workspace_id: target.workspaceId,
+				result: "failed",
+			});
 			Alert.alert(
 				"Could not start agent",
 				error instanceof Error ? error.message : String(error),

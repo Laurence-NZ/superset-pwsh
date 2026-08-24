@@ -1,4 +1,9 @@
 import {
+	setupSingleAgent,
+	teardownSingleAgent,
+	writeSharedDisabledAgentIds,
+} from "@superset/agent-setup";
+import {
 	type AgentCustomDefinition,
 	type AgentPresetOverrideEnvelope,
 	BRANCH_PREFIX_MODES,
@@ -36,7 +41,6 @@ import { NOTIFICATION_VOLUME_LIMITS } from "@superset/shared/settings-constraint
 import { TRPCError } from "@trpc/server";
 import { app } from "electron";
 import { exitImmediately } from "main/index";
-import { setupSingleAgent, teardownSingleAgent } from "main/lib/agent-setup";
 import { appState } from "main/lib/app-state";
 import { hasCustomRingtone } from "main/lib/custom-ringtones";
 import { getMainApiUrl } from "main/lib/desktop-runtime-flags";
@@ -381,7 +385,6 @@ export const createSettingsRouter = () => {
 				}
 
 				const normalizedPatch = normalizeAgentPresetPatch({
-					definition,
 					patch: input.patch,
 				});
 				const nextOverrides = createOverrideEnvelopeWithPatch({
@@ -1073,6 +1076,28 @@ export const createSettingsRouter = () => {
 				return { success: true };
 			}),
 
+		getBrowserHomepageUrl: publicProcedure.query(() => {
+			const row = getSettings();
+			return row.browserHomepageUrl ?? null;
+		}),
+
+		setBrowserHomepageUrl: publicProcedure
+			.input(z.object({ url: z.string().trim().nullable() }))
+			.mutation(({ input }) => {
+				// An empty string clears the override; the pane falls back to about:blank.
+				const url = input.url && input.url.length > 0 ? input.url : null;
+				localDb
+					.insert(settings)
+					.values({ id: 1, browserHomepageUrl: url })
+					.onConflictDoUpdate({
+						target: settings.id,
+						set: { browserHomepageUrl: url },
+					})
+					.run();
+
+				return { success: true };
+			}),
+
 		getDefaultEditor: publicProcedure.query(() => {
 			const row = getSettings();
 			return row.defaultEditor ?? null;
@@ -1122,6 +1147,7 @@ export const createSettingsRouter = () => {
 							set: { disabledAgentHooks: next },
 						})
 						.run();
+					writeSharedDisabledAgentIds(next);
 				}
 				const ran = setupSingleAgent(input.agentId);
 				return { ran };
@@ -1155,6 +1181,7 @@ export const createSettingsRouter = () => {
 						set: { disabledAgentHooks: next },
 					})
 					.run();
+				writeSharedDisabledAgentIds(next);
 
 				const ran = input.enabled
 					? setupSingleAgent(input.agentId)

@@ -133,7 +133,9 @@ export const workspaceLocalStateSchema = z.object({
 		sectionId: z.string().uuid().nullable().default(null),
 		changesFilter: changesFilterSchema.default({ kind: "all" }),
 		changesViewMode: z.enum(["folders", "tree"]).default("folders"),
-		activeTab: z.enum(["changes", "files", "review"]).default("changes"),
+		activeTab: z
+			.enum(["changes", "files", "review", "pages"])
+			.default("changes"),
 		isHidden: z.boolean().default(false),
 		// Epoch ms when the user pinned this workspace to the sidebar's Pinned
 		// section; null = not pinned. Ordering is pinnedAt ascending.
@@ -322,6 +324,32 @@ const DEFAULT_SIDEBAR_FILE_LINKS: LinkTierMap = {
 	metaShift: "external",
 };
 
+/**
+ * Folder links (terminal output) have their own action set — folders can't
+ * open in the file viewer, so the choices are reveal-in-sidebar, external
+ * editor, or Finder. Sidebar folder rows stay hardcoded (folderIntentFor);
+ * this map drives terminal folder links only.
+ */
+const folderLinkActionSchema = z.enum(["reveal", "external", "finder"]);
+
+export type FolderLinkAction = z.infer<typeof folderLinkActionSchema>;
+
+const folderTierMapSchema = z.object({
+	plain: folderLinkActionSchema.nullable(),
+	shift: folderLinkActionSchema.nullable(),
+	meta: folderLinkActionSchema.nullable(),
+	metaShift: folderLinkActionSchema.nullable(),
+});
+
+export type FolderTierMap = z.infer<typeof folderTierMapSchema>;
+
+const DEFAULT_FOLDER_LINKS: FolderTierMap = {
+	plain: null,
+	shift: "finder",
+	meta: "reveal",
+	metaShift: "external",
+};
+
 // Clicking a port badge's open affordance opens http://localhost:<port>.
 // A single action chooses where: "pane" = in-app browser, "newTab" = new
 // in-app tab, "external" = system browser.
@@ -352,6 +380,7 @@ export const v2UserPreferencesSchema = z.object({
 	fileLinks: linkTierMapSchema.default(DEFAULT_LINK_TIER_MAP),
 	urlLinks: linkTierMapSchema.default(DEFAULT_URL_LINKS),
 	sidebarFileLinks: linkTierMapSchema.default(DEFAULT_SIDEBAR_FILE_LINKS),
+	folderLinks: folderTierMapSchema.default(DEFAULT_FOLDER_LINKS),
 	portOpenAction: linkActionSchema.default(DEFAULT_PORT_OPEN_ACTION),
 	terminalPresetsInitialized: z.boolean().default(false),
 	rightSidebarOpen: z.boolean().default(true),
@@ -380,6 +409,7 @@ export const DEFAULT_V2_USER_PREFERENCES: V2UserPreferencesRow = {
 	fileLinks: DEFAULT_LINK_TIER_MAP,
 	urlLinks: DEFAULT_URL_LINKS,
 	sidebarFileLinks: DEFAULT_SIDEBAR_FILE_LINKS,
+	folderLinks: DEFAULT_FOLDER_LINKS,
 	portOpenAction: DEFAULT_PORT_OPEN_ACTION,
 	terminalPresetsInitialized: false,
 	rightSidebarOpen: true,
@@ -464,6 +494,10 @@ export function healV2UserPreferences(raw: unknown): V2UserPreferencesRow {
 		sidebarFileLinks: shouldMigrateLegacySidebarFileLinks
 			? DEFAULT_V2_USER_PREFERENCES.sidebarFileLinks
 			: sidebarFileLinks,
+		folderLinks: {
+			...DEFAULT_V2_USER_PREFERENCES.folderLinks,
+			...r.folderLinks,
+		},
 		// Prune retired/stray built-in ids so the array stays bounded.
 		hiddenBuiltinPresetIds: (Array.isArray(r.hiddenBuiltinPresetIds)
 			? r.hiddenBuiltinPresetIds

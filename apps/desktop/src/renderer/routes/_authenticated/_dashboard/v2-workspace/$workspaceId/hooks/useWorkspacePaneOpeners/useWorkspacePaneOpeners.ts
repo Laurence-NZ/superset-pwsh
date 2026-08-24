@@ -4,14 +4,15 @@ import type { V2TerminalPresetRow } from "renderer/routes/_authenticated/provide
 import type { StoreApi } from "zustand/vanilla";
 import type {
 	BrowserPaneData,
-	ChatPaneData,
 	ChatV3PaneData,
 	CommentPaneData,
 	DiffFocusSide,
 	DiffPaneData,
+	PagePaneData,
 	PaneViewerData,
 	TerminalPaneData,
 } from "../../types";
+import { useDefaultBrowserUrl } from "../useDefaultBrowserUrl";
 import type { TerminalLauncher } from "../useV2TerminalLauncher";
 
 export function useWorkspacePaneOpeners({
@@ -36,10 +37,10 @@ export function useWorkspacePaneOpeners({
 		changeKey?: string,
 	) => void;
 	addTerminalTab: () => Promise<void>;
-	addChatTab: () => void;
 	addChatV3Tab: () => void;
 	addBrowserTab: () => void;
 	openCommentPane: (comment: CommentPaneData) => void;
+	openPagePane: (page: PagePaneData) => void;
 } {
 	const openDiffPane = useCallback(
 		(
@@ -138,17 +139,6 @@ export function useWorkspacePaneOpeners({
 		}
 	}, [addBlankTerminalTab, executePreset, newTabPresets]);
 
-	const addChatTab = useCallback(() => {
-		store.getState().addTab({
-			panes: [
-				{
-					kind: "chat",
-					data: { sessionId: null } as ChatPaneData,
-				},
-			],
-		});
-	}, [store]);
-
 	const addChatV3Tab = useCallback(() => {
 		store.getState().addTab({
 			panes: [
@@ -160,18 +150,19 @@ export function useWorkspacePaneOpeners({
 		});
 	}, [store]);
 
+	const defaultBrowserUrl = useDefaultBrowserUrl();
 	const addBrowserTab = useCallback(() => {
 		store.getState().addTab({
 			panes: [
 				{
 					kind: "browser",
 					data: {
-						url: "about:blank",
+						url: defaultBrowserUrl,
 					} as BrowserPaneData,
 				},
 			],
 		});
-	}, [store]);
+	}, [store, defaultBrowserUrl]);
 
 	const openCommentPane = useCallback(
 		(comment: CommentPaneData) => {
@@ -200,12 +191,31 @@ export function useWorkspacePaneOpeners({
 		[store],
 	);
 
+	const openPagePane = useCallback(
+		(page: PagePaneData) => {
+			const state = store.getState();
+			for (const tab of state.tabs) {
+				for (const pane of Object.values(tab.panes)) {
+					if (pane.kind !== "page") continue;
+					if ((pane.data as PagePaneData).pageId !== page.pageId) continue;
+					state.setActiveTab(tab.id);
+					state.setActivePane({ tabId: tab.id, paneId: pane.id });
+					return;
+				}
+			}
+			state.addTab({
+				panes: [{ kind: "page", data: page as PaneViewerData }],
+			});
+		},
+		[store],
+	);
+
 	return {
 		openDiffPane,
 		addTerminalTab,
-		addChatTab,
 		addChatV3Tab,
 		addBrowserTab,
 		openCommentPane,
+		openPagePane,
 	};
 }

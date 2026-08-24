@@ -11,8 +11,8 @@ import { writeDesktopRuntimeFlagsToLocalStorage } from "renderer/lib/desktop-run
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { HighlightText } from "renderer/routes/_authenticated/settings/components/HighlightText";
 import {
-	useInlineWorkspacePortsEnabled,
 	useInlineWorkspacePortsStore,
+	usePortsDisplayMode,
 } from "renderer/stores/inline-workspace-ports";
 import { useSettingsSearchQuery } from "renderer/stores/settings-state";
 import { useOpenV1ImportModal } from "renderer/stores/v1-import-modal";
@@ -123,9 +123,9 @@ export function ExperimentalSettings({
 	);
 	const runtimeControlsDisabled =
 		isRuntimeFlagsLoading || saveRuntimeFlags.isPending;
-	const inlineWorkspacePortsEnabled = useInlineWorkspacePortsEnabled();
-	const setInlineWorkspacePortsEnabled = useInlineWorkspacePortsStore(
-		(state) => state.setEnabled,
+	const portsDisplayMode = usePortsDisplayMode();
+	const setPortsDisplayMode = useInlineWorkspacePortsStore(
+		(state) => state.setMode,
 	);
 	const workspaceAgentsEnabled = useWorkspaceAgentsRowEnabled();
 	const setWorkspaceAgentsEnabled = useWorkspaceAgentsRowStore(
@@ -308,8 +308,10 @@ export function ExperimentalSettings({
 						</div>
 						<Switch
 							id="inline-workspace-ports"
-							checked={inlineWorkspacePortsEnabled}
-							onCheckedChange={setInlineWorkspacePortsEnabled}
+							checked={portsDisplayMode === "topbar"}
+							onCheckedChange={(checked) =>
+								setPortsDisplayMode(checked ? "topbar" : "inline")
+							}
 						/>
 					</div>
 				)}

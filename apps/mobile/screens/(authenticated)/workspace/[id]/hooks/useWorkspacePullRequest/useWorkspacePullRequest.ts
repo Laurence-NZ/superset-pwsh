@@ -1,47 +1,98 @@
+import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
-import { useHostProjects } from "@/hooks/useHostProjects";
 import { useWorkspaceHost } from "@/hooks/useWorkspaceHost";
-import { prStateFor } from "@/screens/(authenticated)/(home)/home/utils/prStateFor";
 import {
-	type OrgPullRequest,
-	usePullRequests,
-} from "@/screens/(authenticated)/hooks/usePullRequests";
+	getHostServiceClientByUrl,
+	hostServiceUrl,
+} from "@/lib/host-service/client";
 
-const STATE_RANK = { open: 0, draft: 1, merged: 2, closed: 3 } as const;
+const HISTORY_REFETCH_MS = 60_000;
 
-/** The PR for the workspace's branch, best state first (open > draft > merged > closed). */
+export interface WorkspacePullRequest {
+	/** Stable row key; the host rows have no client-facing id. */
+	key: string;
+	repoOwner: string;
+	repoName: string;
+	prNumber: number;
+	url: string;
+	title: string;
+	state: "open" | "draft" | "merged" | "closed" | "queued";
+	isDraft: boolean;
+	headBranch: string;
+	mergedAt: Date | null;
+	linkedAt: number;
+	/** The PR on the workspace's current branch — what the sidebar calls linked. */
+	isCurrent: boolean;
+}
+
+export function getWorkspacePullRequestsQueryKey(workspaceId: string | null) {
+	return ["workspace-pull-request-history", workspaceId] as const;
+}
+
+/**
+ * Every pull request this workspace has ever been linked to, straight from
+ * the host's append-only history — current one first, then newest link
+ * first. The host is the thing that watches the branch, so this needs no
+ * cloud GitHub integration and no branch reconstruction.
+ */
+export function useWorkspacePullRequests(
+	workspaceId: string | null,
+): WorkspacePullRequest[] {
+	const { host } = useWorkspaceHost(workspaceId);
+	const hostUrl =
+		host?.isOnline === true
+			? hostServiceUrl(host.organizationId, host.machineId)
+			: null;
+
+	const query = useQuery({
+		queryKey: getWorkspacePullRequestsQueryKey(workspaceId),
+		enabled: hostUrl !== null && workspaceId !== null,
+		refetchInterval: HISTORY_REFETCH_MS,
+		staleTime: 30_000,
+		networkMode: "always" as const,
+		queryFn: async () => {
+			if (!hostUrl || !workspaceId) return [];
+			const result = await getHostServiceClientByUrl(
+				hostUrl,
+			).pullRequests.historyByWorkspaces.query({
+				workspaceIds: [workspaceId],
+			});
+			return result.workspaces[0]?.pullRequests ?? [];
+		},
+	});
+
+	return useMemo(
+		() =>
+			(query.data ?? []).map(
+				(entry): WorkspacePullRequest => ({
+					key: `${entry.repoOwner}/${entry.repoName}#${entry.number}`,
+					repoOwner: entry.repoOwner,
+					repoName: entry.repoName,
+					prNumber: entry.number,
+					url: entry.url,
+					title: entry.title,
+					state: entry.state,
+					isDraft: entry.isDraft,
+					headBranch: entry.headBranch,
+					mergedAt: entry.mergedAt ? new Date(entry.mergedAt) : null,
+					linkedAt: entry.linkedAt,
+					isCurrent: entry.isCurrent,
+				}),
+			),
+		[query.data],
+	);
+}
+
+/**
+ * The currently linked pull request only. Surfaces with room for one PR
+ * (Files Changed's share/open actions) must never point at a historical PR
+ * from a branch the workspace has moved past.
+ */
 export function useWorkspacePullRequest(
 	workspaceId: string | null,
-): OrgPullRequest | null {
-	const { workspace, host } = useWorkspaceHost(workspaceId);
-	const { projects } = useHostProjects(
-		host
-			? {
-					organizationId: host.organizationId,
-					machineId: host.machineId,
-					isOnline: host.isOnline,
-				}
-			: null,
+): WorkspacePullRequest | null {
+	return (
+		useWorkspacePullRequests(workspaceId).find((entry) => entry.isCurrent) ??
+		null
 	);
-
-	const pullRequests = usePullRequests();
-
-	return useMemo(() => {
-		if (!workspace) return null;
-		// Projects are fully local: match PRs by repo coordinates parsed from
-		// the PR URL (the cloud repo UUID isn't known host-side).
-		const project = projects.find((item) => item.id === workspace.projectId);
-		if (!project?.repoOwner || !project.repoName) return null;
-		const repoPrefix =
-			`https://github.com/${project.repoOwner}/${project.repoName}/`.toLowerCase();
-		const candidates = pullRequests.filter(
-			(pullRequest) =>
-				pullRequest.url.toLowerCase().startsWith(repoPrefix) &&
-				pullRequest.headBranch === workspace.branch,
-		);
-		candidates.sort(
-			(a, b) => STATE_RANK[prStateFor(a)] - STATE_RANK[prStateFor(b)],
-		);
-		return candidates[0] ?? null;
-	}, [workspace, projects, pullRequests]);
 }

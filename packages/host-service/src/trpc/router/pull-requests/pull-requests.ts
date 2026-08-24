@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { protectedProcedure, router } from "../../index";
 import { getContent } from "./procedures/get-content";
+import { mergePR } from "./procedures/merge";
+import { setState } from "./procedures/set-state";
 
 export const pullRequestsRouter = router({
 	getByWorkspaces: protectedProcedure
@@ -12,6 +14,24 @@ export const pullRequestsRouter = router({
 		.query(async ({ ctx, input }) => {
 			const workspaces =
 				await ctx.runtime.pullRequests.getPullRequestsByWorkspaces(
+					input.workspaceIds,
+				);
+			return { workspaces };
+		}),
+	/**
+	 * Every PR each workspace has ever been linked to, current one first.
+	 * `getByWorkspaces` stays the sidebar's view (the one currently-linked PR,
+	 * honoring Remove PR Link); this is the full record behind it.
+	 */
+	historyByWorkspaces: protectedProcedure
+		.input(
+			z.object({
+				workspaceIds: z.array(z.string()),
+			}),
+		)
+		.query(async ({ ctx, input }) => {
+			const workspaces =
+				await ctx.runtime.pullRequests.getPullRequestHistoryByWorkspaces(
 					input.workspaceIds,
 				);
 			return { workspaces };
@@ -39,4 +59,6 @@ export const pullRequestsRouter = router({
 			return { ok: true };
 		}),
 	getContent,
+	setState,
+	mergePR,
 });

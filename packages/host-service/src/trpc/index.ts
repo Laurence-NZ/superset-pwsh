@@ -2,6 +2,7 @@ import * as Sentry from "@sentry/node";
 import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import type { HostServiceContext } from "../types";
+import { readErrorDiagnostics } from "./error-diagnostics";
 import {
 	type DeleteInProgressCause,
 	isDeleteInProgressCause,
@@ -88,6 +89,9 @@ const sentryMiddleware = t.middleware(async ({ next, path, type }) => {
 			},
 			extra: {
 				trpc_message: error.message,
+				// State a throw site measured at the moment of failure. Reporting
+				// is unchanged: this only fills in an event that is already going.
+				...readErrorDiagnostics(originalError),
 			},
 		});
 	}
@@ -110,6 +114,33 @@ export const protectedProcedure = baseProcedure.use(async ({ ctx, next }) => {
 	}
 	return next({ ctx });
 });
+
+/**
+ * For procedures that only make sense on a machine someone owns.
+ *
+ * A cloud workspace's sandbox is one repo, one project, one workspace, fixed
+ * at provision: the checkout *is* the workspace and there is no base repo to
+ * branch from. Adding a project, removing the only one, or cutting a worktree
+ * inside it produces state the cloud side can neither see nor clean up. The
+ * check lives here rather than in each caller because the callers are
+ * whatever runs in the sandbox — an agent, the CLI, a shell — not just our
+ * own UI.
+ *
+ * Reads `process.env` rather than the validated `env`: importing that here
+ * would drag full env validation into the import graph of every consumer of
+ * the router, including tests that have no reason to supply one.
+ */
+export const machineOnlyProcedure = protectedProcedure.use(
+	async ({ ctx, next, path }) => {
+		if (process.env.SUPERSET_HOST_RUN_MODE === "sandbox") {
+			throw new TRPCError({
+				code: "PRECONDITION_FAILED",
+				message: `${path} is not available in a cloud workspace: its sandbox holds exactly one project and one workspace.`,
+			});
+		}
+		return next({ ctx });
+	},
+);
 
 const DEFAULT_QUERY_TIMEOUT_MS = 5_000;
 
