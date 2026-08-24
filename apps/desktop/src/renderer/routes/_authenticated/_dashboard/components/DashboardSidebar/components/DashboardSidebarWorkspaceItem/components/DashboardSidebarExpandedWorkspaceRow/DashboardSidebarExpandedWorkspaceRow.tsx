@@ -17,6 +17,7 @@ import {
 import { WorkspaceNameMarquee } from "renderer/components/WorkspaceNameMarquee";
 import { useCommitsToPull } from "renderer/hooks/host-service/useCommitsToPull";
 import type { DiffStats } from "renderer/hooks/host-service/useDiffStats";
+import { useFocusVisible } from "renderer/hooks/useFocusVisible";
 import { HotkeyLabel } from "renderer/hotkeys";
 import { electronTrpc } from "renderer/lib/electron-trpc";
 import { ProjectThumbnail } from "renderer/routes/_authenticated/components/ProjectThumbnail";
@@ -109,6 +110,13 @@ export const DashboardSidebarExpandedWorkspaceRow = forwardRef<
 		const isPending = pendingTransaction?.type === "insert";
 		const localRef = useRef<HTMLDivElement>(null);
 		const openUrl = electronTrpc.external.openUrl.useMutation();
+		// Drives the name's hover-reveal for keyboard users: the row, not the
+		// name span, is what's actually tabbable.
+		const {
+			isFocusVisible: isFocused,
+			onFocus: handleRowFocus,
+			onBlur: handleRowBlur,
+		} = useFocusVisible();
 
 		// STOPGAP (Windows port branch only) — DELETE ON MERGE. Temporary "commits
 		// to pull" indicator until upstream/main ships a real ahead/behind indicator
@@ -177,6 +185,8 @@ export const DashboardSidebarExpandedWorkspaceRow = forwardRef<
 						}
 					}}
 					onDoubleClick={onDoubleClick}
+					onFocus={handleRowFocus}
+					onBlur={handleRowBlur}
 					className={cn(
 						"group relative flex w-full items-center py-1.5 pr-2",
 						isInSection ? "pl-8" : "pl-3",

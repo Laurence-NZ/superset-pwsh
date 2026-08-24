@@ -91,8 +91,8 @@ function readProbe(orgId: string, optIn: boolean | null) {
 }
 
 describe("useIsV1FlipLocked", () => {
-	test("unlocked v1-era user without a migration marker stays on v1", () => {
-		expect(readProbe("org-plain", null)).toEqual({ locked: false, v2: false });
+	test("the Windows fork keeps an unlocked v1-era user on v2", () => {
+		expect(readProbe("org-plain", null)).toEqual({ locked: false, v2: true });
 	});
 
 	test("migration marker locks the flip", () => {

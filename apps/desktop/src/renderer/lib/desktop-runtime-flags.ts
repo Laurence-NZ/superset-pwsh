@@ -34,10 +34,6 @@ export function getRuntimeApiUrl(): string {
 	return trimTrailingSlash(env.NEXT_PUBLIC_API_URL);
 }
 
-export function getRuntimeElectricUrl(): string {
-	return trimTrailingSlash(env.NEXT_PUBLIC_ELECTRIC_URL);
-}
-
 export function getRendererPostHogKey(key: string | undefined): string | null {
 	return getPostHogKeyOrNull(key, {
 		disabled: readDesktopRuntimeFlagsFromLocalStorage().disableAnalytics,

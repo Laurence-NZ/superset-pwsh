@@ -1,5 +1,9 @@
 import { isV2OnlyUser } from "@superset/shared/v2-only-user";
 import { authClient } from "renderer/lib/auth-client";
+import {
+	isV1ForcedFlipActive,
+	isV1MigrationCompleteAtBoot,
+} from "renderer/lib/v1-migration/completion";
 
 /**
  * True for accounts created on/after V2_ONLY_USER_CUTOFF — these users
