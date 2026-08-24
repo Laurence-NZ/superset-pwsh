@@ -247,15 +247,6 @@ export async function createManagedSkills(
 		MANAGED_COMMAND_NAMESPACE,
 	);
 
-	try {
-		await provisionClaudePlugin(
-			bundledPluginDir,
-			path.join(homeDir, ".claude"),
-		);
-	} catch (error) {
-		console.warn("[agent-setup] Failed to provision Claude plugin:", error);
-	}
-
 	const bundledSkills = listBundledSkills(bundledPluginDir);
 	if (bundledSkills === null) {
 		console.warn(
@@ -323,11 +314,11 @@ export async function createManagedSkills(
 	}
 
 	try {
-		// ~/.claude/skills holds only the plugin dir; anything else marker-bearing
-		// there (including dirs from earlier versions of this mechanism) is stale.
+		// This fork does not install skills globally into Claude Code. An empty
+		// desired set removes only Superset-owned directories from earlier builds.
 		await reapStaleSkillDirs(
 			path.join(homeDir, ".claude", "skills"),
-			new Set([CLAUDE_PLUGIN_DIR_NAME]),
+			new Set(),
 		);
 		await reapStaleSkillDirs(agentsSkillsRoot, desiredAgentsDirs);
 		await reapStaleCommands(commandNamespaceDir, desiredCommandFiles);
