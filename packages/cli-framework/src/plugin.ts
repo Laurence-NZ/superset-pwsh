@@ -9,6 +9,7 @@
 import { existsSync } from "node:fs";
 import type { BunPlugin } from "bun";
 import { Glob } from "bun";
+import { getCommandPath } from "./command-path";
 
 export interface CommandsPluginOptions {
 	/** Absolute path to the commands directory. */
@@ -71,12 +72,12 @@ export function createCommandsPlugin(opts: CommandsPluginOptions): BunPlugin {
 
 				lines.push("", "export const commands = [");
 				for (const [i, match] of commandFiles.entries()) {
-					const path = match.replaceAll("\\", "/").split("/").slice(0, -1);
+					const path = getCommandPath(match);
 					lines.push(`\t{ path: ${JSON.stringify(path)}, command: cmd${i} },`);
 				}
 				lines.push("];", "", "export const groups = [");
 				for (const [i, match] of metaFiles.entries()) {
-					const path = match.replaceAll("\\", "/").split("/").slice(0, -1);
+					const path = getCommandPath(match);
 					lines.push(`\t{ path: ${JSON.stringify(path)}, ...meta${i} },`);
 				}
 				lines.push(

@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import { Glob } from "bun";
+import { getCommandPath } from "./command-path";
 import { loadConfig } from "./config";
 import type { MiddlewareFn } from "./middleware";
 import type { CliCommand, CliGroup } from "./router";
@@ -28,7 +29,7 @@ export async function runDev(argv: string[]): Promise<void> {
 			default: CliCommand["command"];
 		};
 		commands.push({
-			path: file.replaceAll("\\", "/").split("/").slice(0, -1),
+			path: getCommandPath(file),
 			command: mod.default,
 		});
 	}
@@ -39,7 +40,7 @@ export async function runDev(argv: string[]): Promise<void> {
 			default: Omit<CliGroup, "path">;
 		};
 		groups.push({
-			path: file.replaceAll("\\", "/").split("/").slice(0, -1),
+			path: getCommandPath(file),
 			...mod.default,
 		});
 	}
