@@ -1494,3 +1494,19 @@ notify the user and switch to theirs.
   `~/.claude/skills`.
 - **Symptom if broken:** launching either a development or packaged desktop
   build recreates `~/.claude/skills/superset`.
+
+## F19 — Normalize CLI command paths on Windows
+
+- **Commits:** `b4bc2cfa7`.
+- **Override policy:** **OVERRIDABLE.** Adopt an upstream cross-platform path
+  normalization if it covers both runtime discovery and compiled CLI builds.
+- **Invariant:** CLI command and group paths derived from Bun glob results are
+  normalized to `/` before splitting. Windows glob results use `\\`, and the
+  command tree must register paths such as `status` and `auth/whoami` rather
+  than treating every command as a root command.
+- **Where:** `packages/cli-framework/src/dev.ts` and
+  `packages/cli-framework/src/plugin.ts`.
+- **Scan for:** `Glob("**/command.ts")` or `Glob("**/meta.ts")` results being
+  split directly on `/` without first replacing `\\`.
+- **Symptom if broken:** `superset status`, `superset auth whoami`, and other
+  subcommands print root help with exit code 0 in a Windows build.
