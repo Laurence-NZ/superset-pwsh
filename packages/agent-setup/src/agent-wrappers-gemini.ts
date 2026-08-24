@@ -113,7 +113,7 @@ export function createGeminiWrapper(): void {
 	const script = buildWrapperScript("gemini", `exec "$REAL_BIN" "$@"`, {
 		agentId: "gemini",
 	});
-	createWrapper("gemini", script);
+	createWrapper("gemini", script, { agentId: "gemini" });
 }
 
 /**

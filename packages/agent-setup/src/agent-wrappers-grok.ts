@@ -181,5 +181,5 @@ export function getGrokWrapperScript(): string {
 }
 
 export function createGrokWrapper(): void {
-	createWrapper("grok", getGrokWrapperScript());
+	createWrapper("grok", getGrokWrapperScript(), { agentId: "grok" });
 }

@@ -106,5 +106,5 @@ export function getKimiWrapperScript(): string {
 }
 
 export function createKimiWrapper(): void {
-	createWrapper("kimi", getKimiWrapperScript());
+	createWrapper("kimi", getKimiWrapperScript(), { agentId: "kimi" });
 }

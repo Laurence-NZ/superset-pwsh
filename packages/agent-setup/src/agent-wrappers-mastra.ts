@@ -28,7 +28,7 @@ export function createMastraWrapper(): void {
 	const script = buildWrapperScript("mastracode", `exec "$REAL_BIN" "$@"`, {
 		agentId: "mastracode",
 	});
-	createWrapper("mastracode", script);
+	createWrapper("mastracode", script, { agentId: "mastracode" });
 }
 
 // Session lifecycle drives the pane icon binding; per-prompt drives status.

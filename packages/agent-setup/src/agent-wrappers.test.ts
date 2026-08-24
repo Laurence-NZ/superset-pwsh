@@ -26,7 +26,13 @@ let mockedHomeDir = path.join(TEST_ROOT, "home");
 mock.module("./notify-hook", () => ({
 	NOTIFY_SCRIPT_NAME: "notify.sh",
 	NOTIFY_SCRIPT_MARKER: "# Superset agent notification hook v9",
-	getNotifyScriptPath: () => path.join(TEST_HOOKS_DIR, "notify.sh"),
+	WINDOWS_NOTIFY_SCRIPT_NAME: "notify.cmd",
+	WINDOWS_NOTIFY_SCRIPT_MARKER: "rem Superset agent notification hook v9",
+	getNotifyScriptPath: (platform: NodeJS.Platform = process.platform) =>
+		path.join(
+			TEST_HOOKS_DIR,
+			platform === "win32" ? "notify.cmd" : "notify.sh",
+		),
 	getNotifyScriptContent: () => "#!/bin/bash\nexit 0\n",
 	createNotifyScript: () => {},
 }));
@@ -56,10 +62,12 @@ const {
 	createAmpWrapper,
 	buildCodexWrapperExecLine,
 	buildCopilotWrapperExecLine,
+	buildWindowsWrapperScript,
 	buildWrapperScript,
 	createClaudeSettingsJson,
 	createCodexHooksJson,
 	createCodexWrapper,
+	createWrapper,
 	COPILOT_HOOK_MARKER,
 	CURSOR_HOOK_MARKER,
 	createDroidSettingsJson,
@@ -72,6 +80,7 @@ const {
 	getCursorHooksJsonContent,
 	getCopilotHookScriptPath,
 	getDroidSettingsJsonContent,
+	getWindowsWrapperPath,
 	GEMINI_HOOK_MARKER,
 	getAmpGlobalPluginPath,
 	getAmpPluginContent,
@@ -87,6 +96,80 @@ function requireContent(content: string | null): string {
 	if (content === null) throw new Error("Expected merged hook content");
 	return content;
 }
+
+describe("Windows agent wrappers", () => {
+	beforeEach(() => {
+		mkdirSync(TEST_BIN_DIR, { recursive: true });
+	});
+
+	afterEach(() => {
+		rmSync(TEST_ROOT, { recursive: true, force: true });
+	});
+
+	it("builds cmd wrappers for native PATH resolution", () => {
+		const wrapper = buildWindowsWrapperScript("claude", {
+			agentId: "claude",
+		});
+
+		expect(wrapper).toContain("@echo off");
+		expect(wrapper).toContain("# Superset agent-wrapper v3");
+		expect(wrapper).toContain('set "SUPERSET_AGENT_ID=claude"');
+		expect(wrapper).toContain('if /I not "%%~fD"=="!_superset_bin_dir!"');
+		expect(wrapper).toContain("%%~fD\\claude%%~E");
+		expect(wrapper).toContain("exit /b !ERRORLEVEL!");
+	});
+
+	it("writes a cmd wrapper beside the Unix wrapper", () => {
+		const script = buildWrapperScript("claude", `exec "$REAL_BIN" "$@"`, {
+			agentId: "claude",
+		});
+
+		createWrapper("claude", script, {
+			agentId: "claude",
+			platform: "win32",
+		});
+
+		expect(readFileSync(path.join(TEST_BIN_DIR, "claude"), "utf-8")).toBe(
+			script,
+		);
+		const cmd = readFileSync(getWindowsWrapperPath("claude"), "utf-8");
+		expect(cmd).toContain("@echo off");
+		expect(cmd).toContain('set "SUPERSET_AGENT_ID=claude"');
+	});
+
+	it("runs the cmd wrapper against the real binary", () => {
+		if (process.platform !== "win32") return;
+		const realBinDir = path.join(TEST_ROOT, "real-bin");
+		mkdirSync(realBinDir, { recursive: true });
+		writeFileSync(
+			path.join(realBinDir, "claude.cmd"),
+			"@echo off\r\necho agent=%SUPERSET_AGENT_ID%\r\necho args=%*\r\n",
+		);
+		createWrapper("claude", "#!/bin/bash\n", {
+			agentId: "claude",
+			platform: "win32",
+		});
+
+		const searchPath = `${TEST_BIN_DIR};${realBinDir};${process.env.PATH || ""}`;
+		const output = execFileSync(
+			getWindowsWrapperPath("claude"),
+			["one", "two"],
+			{
+				env: { ...process.env, PATH: searchPath, Path: searchPath },
+				encoding: "utf-8",
+			},
+		);
+		expect(output).toContain("agent=claude");
+		expect(output).toContain("args=one two");
+	});
+
+	it("uses the cmd notify dispatcher on Windows", () => {
+		const command = getManagedNotifyHookCommand("claude", "win32");
+		expect(command).toContain("cmd.exe /d /s /c");
+		expect(command).toContain("notify.cmd");
+		expect(command).toContain("SUPERSET_AGENT_ID=claude");
+	});
+});
 
 const managedClaudeHookCommand = getClaudeManagedHookCommand();
 const managedDroidHookCommand = getManagedNotifyHookCommand("droid");

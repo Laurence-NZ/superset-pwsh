@@ -30,7 +30,7 @@ export function createDroidWrapper(): void {
 	const script = buildWrapperScript("droid", `exec "$REAL_BIN" "$@"`, {
 		agentId: "droid",
 	});
-	createWrapper("droid", script);
+	createWrapper("droid", script, { agentId: "droid" });
 }
 
 const DROID_MANAGED_EVENTS: Record<string, { matcher?: string }> = {

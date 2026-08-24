@@ -3,7 +3,14 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { getTemplatePath } from "./config";
-import { NOTIFY_SCRIPT_MARKER } from "./notify-hook";
+import {
+	getNotifyNodeScriptContent,
+	getWindowsNotifyCommandScriptContent,
+	NOTIFY_SCRIPT_MARKER,
+	WINDOWS_NOTIFY_SCRIPT_MARKER,
+} from "./notify-hook";
+
+const itBash = process.platform === "win32" ? it.skip : it;
 
 function readNotifyHookTemplate(): string {
 	return readFileSync(getTemplatePath("notify-hook.template.sh"), "utf-8");
@@ -44,6 +51,63 @@ function runNotifyHook(
 		stderr: "pipe",
 	});
 }
+
+function runNotifyNodeHook(input: Record<string, unknown>) {
+	return Bun.spawnSync({
+		cmd: [
+			process.execPath,
+			"--input-type=module",
+			"-e",
+			getNotifyNodeScriptContent(),
+		],
+		env: {
+			...process.env,
+			SUPERSET_AGENT_ID: "codex",
+			SUPERSET_DEBUG_HOOKS: "1",
+			SUPERSET_HOME_DIR: emptyHome,
+			SUPERSET_PORT: "9",
+			SUPERSET_TERMINAL_ID: "terminal-test",
+		},
+		stdin: Buffer.from(JSON.stringify(input)),
+		stdout: "pipe",
+		stderr: "pipe",
+	});
+}
+
+describe("Windows notify dispatcher", () => {
+	it("keeps the marker aligned with the POSIX hook", () => {
+		expect(WINDOWS_NOTIFY_SCRIPT_MARKER).toBe(
+			"rem Superset agent notification hook v9",
+		);
+		expect(getWindowsNotifyCommandScriptContent("C:\\node.exe")).toContain(
+			'"%NODE_EXE%" "%HOOK_DIR%notify.mjs" %*',
+		);
+	});
+
+	it("maps Codex approval events to permission requests", () => {
+		const result = runNotifyNodeHook({ type: "request_user_input" });
+		expect(result.exitCode).toBe(0);
+		expect(new TextDecoder().decode(result.stderr)).toContain(
+			"event=PermissionRequest",
+		);
+	});
+
+	it("ignores Claude subagent events", () => {
+		const result = runNotifyNodeHook({
+			agent_id: "subagent-1",
+			hook_event_name: "Stop",
+		});
+		expect(result.exitCode).toBe(0);
+		expect(new TextDecoder().decode(result.stderr)).not.toContain("event=Stop");
+	});
+
+	it("resolves live host endpoints from manifests", () => {
+		const script = getNotifyNodeScriptContent();
+		expect(script).toContain('path.join(home, "host")');
+		expect(script).toContain('manifest.endpoint + "/trpc/notifications.hook"');
+		expect(script).toContain('/"ignored"\\s*:\\s*false/');
+	});
+});
 
 /**
  * Async variant for tests that stand up an in-process Bun.serve fake
@@ -107,7 +171,7 @@ describe("getNotifyScriptContent", () => {
 		expect(NOTIFY_SCRIPT_MARKER).toBe("# Superset agent notification hook v9");
 	});
 
-	it("ignores hooks fired inside a subagent (agent_id present)", () => {
+	itBash("ignores hooks fired inside a subagent (agent_id present)", () => {
 		const result = runNotifyHook({
 			hook_event_name: "PostToolUse",
 			session_id: "main-session",
@@ -119,7 +183,7 @@ describe("getNotifyScriptContent", () => {
 		expect(result.stderr.toString()).toBe("");
 	});
 
-	it("still dispatches main-loop hooks without agent_id", () => {
+	itBash("still dispatches main-loop hooks without agent_id", () => {
 		const result = runNotifyHook({
 			hook_event_name: "Stop",
 			session_id: "main-session",
@@ -129,15 +193,18 @@ describe("getNotifyScriptContent", () => {
 		expect(result.stderr.toString()).toContain("[notify-hook] event=Stop");
 	});
 
-	it("exits silently outside Superset terminals even with a payload session id", () => {
-		const result = runNotifyHook(
-			{ hook_event_name: "Stop", session_id: "foreign-session" },
-			{ SUPERSET_TERMINAL_ID: "", SUPERSET_TAB_ID: "" },
-		);
+	itBash(
+		"exits silently outside Superset terminals even with a payload session id",
+		() => {
+			const result = runNotifyHook(
+				{ hook_event_name: "Stop", session_id: "foreign-session" },
+				{ SUPERSET_TERMINAL_ID: "", SUPERSET_TAB_ID: "" },
+			);
 
-		expect(result.exitCode).toBe(0);
-		expect(result.stderr.toString()).toBe("");
-	});
+			expect(result.exitCode).toBe(0);
+			expect(result.stderr.toString()).toBe("");
+		},
+	);
 
 	it("emits the v2 host-service payload with full agent identity", () => {
 		const script = readNotifyHookTemplate();
@@ -185,25 +252,30 @@ describe("getNotifyScriptContent", () => {
 		expect(script).toContain("SUPERSET_PANE_ID");
 	});
 
-	it("extracts the codex thread-id as the session id on turn completion", () => {
-		// Exact shape of codex's legacy notify callback (captured from
-		// codex-cli 0.146): the resumable id rides in kebab-case thread-id.
-		const result = runNotifyHook({
-			type: "agent-turn-complete",
-			"thread-id": "019fdecb-edc4-7671-91ba-967a367cda56",
-			"turn-id": "019fdecb-edec-7390-8ccb-50060c49c32f",
-			cwd: "/tmp",
-			"input-messages": ["Reply with exactly: OK"],
-			"last-assistant-message": "OK",
-		});
+	itBash(
+		"extracts the codex thread-id as the session id on turn completion",
+		() => {
+			// Exact shape of codex's legacy notify callback (captured from
+			// codex-cli 0.146): the resumable id rides in kebab-case thread-id.
+			const result = runNotifyHook({
+				type: "agent-turn-complete",
+				"thread-id": "019fdecb-edc4-7671-91ba-967a367cda56",
+				"turn-id": "019fdecb-edec-7390-8ccb-50060c49c32f",
+				cwd: "/tmp",
+				"input-messages": ["Reply with exactly: OK"],
+				"last-assistant-message": "OK",
+			});
 
-		expect(result.exitCode).toBe(0);
-		const stderr = result.stderr.toString();
-		expect(stderr).toContain("[notify-hook] event=Stop");
-		expect(stderr).toContain("sessionId=019fdecb-edc4-7671-91ba-967a367cda56");
-	});
+			expect(result.exitCode).toBe(0);
+			const stderr = result.stderr.toString();
+			expect(stderr).toContain("[notify-hook] event=Stop");
+			expect(stderr).toContain(
+				"sessionId=019fdecb-edc4-7671-91ba-967a367cda56",
+			);
+		},
+	);
 
-	it("prefers an explicit session_id over thread-id", () => {
+	itBash("prefers an explicit session_id over thread-id", () => {
 		const result = runNotifyHook({
 			hook_event_name: "Stop",
 			session_id: "real-session",
@@ -214,31 +286,37 @@ describe("getNotifyScriptContent", () => {
 		expect(result.stderr.toString()).toContain("sessionId=real-session");
 	});
 
-	it("normalizes Grok permission notifications to PermissionRequest", () => {
-		const result = runNotifyHook({
-			hookEventName: "notification",
-			notificationType: "permission_prompt",
-		});
+	itBash(
+		"normalizes Grok permission notifications to PermissionRequest",
+		() => {
+			const result = runNotifyHook({
+				hookEventName: "notification",
+				notificationType: "permission_prompt",
+			});
 
-		expect(result.exitCode).toBe(0);
-		expect(result.stderr.toString()).toContain(
-			"[notify-hook] event=PermissionRequest",
-		);
-	});
+			expect(result.exitCode).toBe(0);
+			expect(result.stderr.toString()).toContain(
+				"[notify-hook] event=PermissionRequest",
+			);
+		},
+	);
 
-	it("normalizes Grok ask_user_question notifications to PermissionRequest", () => {
-		const result = runNotifyHook({
-			hookEventName: "notification",
-			notificationType: "elicitation_dialog",
-		});
+	itBash(
+		"normalizes Grok ask_user_question notifications to PermissionRequest",
+		() => {
+			const result = runNotifyHook({
+				hookEventName: "notification",
+				notificationType: "elicitation_dialog",
+			});
 
-		expect(result.exitCode).toBe(0);
-		expect(result.stderr.toString()).toContain(
-			"[notify-hook] event=PermissionRequest",
-		);
-	});
+			expect(result.exitCode).toBe(0);
+			expect(result.stderr.toString()).toContain(
+				"[notify-hook] event=PermissionRequest",
+			);
+		},
+	);
 
-	it("ignores unrelated Grok notification subtypes", () => {
+	itBash("ignores unrelated Grok notification subtypes", () => {
 		const result = runNotifyHook({
 			hookEventName: "notification",
 			notificationType: "idle_prompt",
@@ -297,66 +375,75 @@ describe("call-time endpoint resolution (frozen-port healing)", () => {
 	// host-service instance captured into the agent's env before restarting.
 	const deadUrl = "http://127.0.0.1:1/trpc/notifications.hook";
 
-	it("delivers via the org manifest when the env hook URL points at a dead port", async () => {
-		const live = fakeHostService(false);
-		const home = mkdtempSync(path.join(tmpdir(), "notify-hook-home-"));
-		writeHookManifest(home, "org-a", live.url);
-		try {
-			const result = await runNotifyHookAsync(stopEvent, {
-				SUPERSET_HOME_DIR: home,
-				SUPERSET_HOST_AGENT_HOOK_URL: deadUrl,
-			});
+	itBash(
+		"delivers via the org manifest when the env hook URL points at a dead port",
+		async () => {
+			const live = fakeHostService(false);
+			const home = mkdtempSync(path.join(tmpdir(), "notify-hook-home-"));
+			writeHookManifest(home, "org-a", live.url);
+			try {
+				const result = await runNotifyHookAsync(stopEvent, {
+					SUPERSET_HOME_DIR: home,
+					SUPERSET_HOST_AGENT_HOOK_URL: deadUrl,
+				});
 
-			expect(result.exitCode).toBe(0);
-			expect(live.requests).toHaveLength(1);
-			expect(live.requests[0]?.json.terminalId).toBe("terminal-test");
-			expect(result.stderr).toContain("status=000");
-			expect(result.stderr).toContain(`status=200 url=${live.url}`);
-		} finally {
-			live.stop();
-		}
-	});
+				expect(result.exitCode).toBe(0);
+				expect(live.requests).toHaveLength(1);
+				expect(live.requests[0]?.json.terminalId).toBe("terminal-test");
+				expect(result.stderr).toContain("status=000");
+				expect(result.stderr).toContain(`status=200 url=${live.url}`);
+			} finally {
+				live.stop();
+			}
+		},
+	);
 
-	it("keeps probing past a host that does not own the terminal (ignored:true)", async () => {
-		const wrongOrg = fakeHostService(true);
-		const owningOrg = fakeHostService(false);
-		const home = mkdtempSync(path.join(tmpdir(), "notify-hook-home-"));
-		// org-a sorts before org-b in the manifest glob, so the wrong host is
-		// probed first and must not terminate the dispatch.
-		writeHookManifest(home, "org-a", wrongOrg.url);
-		writeHookManifest(home, "org-b", owningOrg.url);
-		try {
-			const result = await runNotifyHookAsync(stopEvent, {
-				SUPERSET_HOME_DIR: home,
-				SUPERSET_HOST_AGENT_HOOK_URL: deadUrl,
-			});
+	itBash(
+		"keeps probing past a host that does not own the terminal (ignored:true)",
+		async () => {
+			const wrongOrg = fakeHostService(true);
+			const owningOrg = fakeHostService(false);
+			const home = mkdtempSync(path.join(tmpdir(), "notify-hook-home-"));
+			// org-a sorts before org-b in the manifest glob, so the wrong host is
+			// probed first and must not terminate the dispatch.
+			writeHookManifest(home, "org-a", wrongOrg.url);
+			writeHookManifest(home, "org-b", owningOrg.url);
+			try {
+				const result = await runNotifyHookAsync(stopEvent, {
+					SUPERSET_HOME_DIR: home,
+					SUPERSET_HOST_AGENT_HOOK_URL: deadUrl,
+				});
 
-			expect(result.exitCode).toBe(0);
-			expect(wrongOrg.requests).toHaveLength(1);
-			expect(owningOrg.requests).toHaveLength(1);
-		} finally {
-			wrongOrg.stop();
-			owningOrg.stop();
-		}
-	});
+				expect(result.exitCode).toBe(0);
+				expect(wrongOrg.requests).toHaveLength(1);
+				expect(owningOrg.requests).toHaveLength(1);
+			} finally {
+				wrongOrg.stop();
+				owningOrg.stop();
+			}
+		},
+	);
 
-	it("uses the env URL fast path without probing manifests when it answers", async () => {
-		const envHost = fakeHostService(false);
-		const manifestHost = fakeHostService(false);
-		const home = mkdtempSync(path.join(tmpdir(), "notify-hook-home-"));
-		writeHookManifest(home, "org-a", manifestHost.url);
-		try {
-			const result = await runNotifyHookAsync(stopEvent, {
-				SUPERSET_HOME_DIR: home,
-				SUPERSET_HOST_AGENT_HOOK_URL: `${envHost.url}/trpc/notifications.hook`,
-			});
+	itBash(
+		"uses the env URL fast path without probing manifests when it answers",
+		async () => {
+			const envHost = fakeHostService(false);
+			const manifestHost = fakeHostService(false);
+			const home = mkdtempSync(path.join(tmpdir(), "notify-hook-home-"));
+			writeHookManifest(home, "org-a", manifestHost.url);
+			try {
+				const result = await runNotifyHookAsync(stopEvent, {
+					SUPERSET_HOME_DIR: home,
+					SUPERSET_HOST_AGENT_HOOK_URL: `${envHost.url}/trpc/notifications.hook`,
+				});
 
-			expect(result.exitCode).toBe(0);
-			expect(envHost.requests).toHaveLength(1);
-			expect(manifestHost.requests).toHaveLength(0);
-		} finally {
-			envHost.stop();
-			manifestHost.stop();
-		}
-	});
+				expect(result.exitCode).toBe(0);
+				expect(envHost.requests).toHaveLength(1);
+				expect(manifestHost.requests).toHaveLength(0);
+			} finally {
+				envHost.stop();
+				manifestHost.stop();
+			}
+		},
+	);
 });
