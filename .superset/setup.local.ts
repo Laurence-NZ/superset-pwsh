@@ -17,7 +17,6 @@ import { fileURLToPath } from "node:url";
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const rootDir = join(scriptDir, "..");
 process.chdir(rootDir);
-const electricSecret = "local_electric_dev_secret";
 const reservedPorts = new Set([
 	3659, 4045, 5000, 5060, 5061, 6000, 6566, 6665, 6666, 6667, 6668, 6669, 6697,
 	7000,
@@ -43,10 +42,7 @@ interface LocalPorts {
 	desktopNotifications: number;
 	streams: number;
 	streamsInternal: number;
-	electric: number;
-	caddyElectric: number;
 	codeInspector: number;
-	wrangler: number;
 	relay: number;
 	postgres: number;
 	neonProxy: number;
@@ -125,11 +121,6 @@ function checkDependencies(): void {
 	if (!hasCommand("docker", ["--version"])) {
 		missing.push("docker (https://docker.com)");
 	}
-	if (!hasCommand("caddy", ["version"])) {
-		warn(
-			"caddy not found - Electric HTTPS proxy will not work (install Caddy and run caddy trust)",
-		);
-	}
 	if (missing.length > 0) {
 		if (args.dryRun) {
 			warn(
@@ -172,10 +163,9 @@ function allocatePorts(): void {
 		desktopNotifications: base + 6,
 		streams: base + 7,
 		streamsInternal: base + 8,
-		electric: base + 9,
-		caddyElectric: base + 10,
+		// +9, +10, and +12 were Electric/Caddy/Wrangler. Keep the gaps so
+		// existing workspace allocations retain their established ports.
 		codeInspector: base + 11,
-		wrangler: base + 12,
 		relay: base + 13,
 		postgres: base + 14,
 		neonProxy: base + 15,
@@ -183,11 +173,10 @@ function allocatePorts(): void {
 	process.env.SUPERSET_PORT_BASE = String(base);
 	process.env.LOCAL_PG_PORT = String(localPorts.postgres);
 	process.env.LOCAL_NEON_PROXY_PORT = String(localPorts.neonProxy);
-	process.env.LOCAL_ELECTRIC_PORT = String(localPorts.electric);
 	process.env.DATABASE_URL = `postgres://postgres:postgres@db.localtest.me:${localPorts.neonProxy}/main`;
 	process.env.DATABASE_URL_UNPOOLED = `postgres://postgres:postgres@localhost:${localPorts.postgres}/main`;
 	success(
-		`Base ${base} -> pg=${localPorts.postgres} proxy=${localPorts.neonProxy} electric=${localPorts.electric} (project ${localDbProject})`,
+		`Base ${base} -> pg=${localPorts.postgres} proxy=${localPorts.neonProxy} (project ${localDbProject})`,
 	);
 }
 
@@ -206,7 +195,6 @@ function writeWorkspaceEnv(): void {
 		`# Per-workspace local DB stack (docker compose project ${localDbProject})`,
 		writeEnvVar("LOCAL_PG_PORT", String(ports.postgres)),
 		writeEnvVar("LOCAL_NEON_PROXY_PORT", String(ports.neonProxy)),
-		writeEnvVar("LOCAL_ELECTRIC_PORT", String(ports.electric)),
 		writeEnvVar("DATABASE_URL", process.env.DATABASE_URL || ""),
 		writeEnvVar(
 			"DATABASE_URL_UNPOOLED",
@@ -226,12 +214,8 @@ function writeWorkspaceEnv(): void {
 		),
 		writeEnvVar("STREAMS_PORT", String(ports.streams)),
 		writeEnvVar("STREAMS_INTERNAL_PORT", String(ports.streamsInternal)),
-		writeEnvVar("CADDY_ELECTRIC_PORT", String(ports.caddyElectric)),
 		writeEnvVar("CODE_INSPECTOR_PORT", String(ports.codeInspector)),
-		writeEnvVar("WRANGLER_PORT", String(ports.wrangler)),
 		writeEnvVar("RELAY_PORT", String(ports.relay)),
-		writeEnvVar("ELECTRIC_PORT", String(ports.electric)),
-		writeEnvVar("ELECTRIC_SECRET", electricSecret),
 		"",
 		"# Cross-app URLs (allocated ports)",
 		writeEnvVar("NEXT_PUBLIC_API_URL", `http://localhost:${ports.api}`),
@@ -249,57 +233,22 @@ function writeWorkspaceEnv(): void {
 		writeEnvVar("RELAY_URL", `http://localhost:${ports.relay}`),
 		writeEnvVar("NEXT_PUBLIC_RELAY_URL", `http://localhost:${ports.relay}`),
 		writeEnvVar("SUPERSET_WEB_URL", `http://localhost:${ports.web}`),
+		writeEnvVar("EXPO_PUBLIC_WEB_URL", `http://localhost:${ports.web}`),
+		writeEnvVar("EXPO_PUBLIC_API_URL", `http://localhost:${ports.api}`),
 		"",
 		"# Streams URLs",
 		writeEnvVar("PORT", String(ports.streams)),
 		writeEnvVar("STREAMS_URL", `http://localhost:${ports.streams}`),
 		writeEnvVar("NEXT_PUBLIC_STREAMS_URL", `http://localhost:${ports.streams}`),
+		writeEnvVar("EXPO_PUBLIC_STREAMS_URL", `http://localhost:${ports.streams}`),
 		writeEnvVar(
 			"STREAMS_INTERNAL_URL",
 			`http://127.0.0.1:${ports.streamsInternal}`,
 		),
-		"",
-		`# Electric URLs (per-workspace Electric :${ports.electric}, fronted by Caddy)`,
-		writeEnvVar("ELECTRIC_URL", `http://localhost:${ports.electric}/v1/shape`),
-		writeEnvVar(
-			"NEXT_PUBLIC_ELECTRIC_URL",
-			`https://localhost:${ports.caddyElectric}`,
-		),
-		writeEnvVar(
-			"NEXT_PUBLIC_ELECTRIC_PROXY_URL",
-			`https://localhost:${ports.caddyElectric}`,
-		),
+		writeEnvVar("EXPO_PUBLIC_RELAY_URL", `http://localhost:${ports.relay}`),
 	].join("\n");
 
 	writeFile(join(rootDir, ".env"), `${envBlock}\n`, { append: true });
-
-	writeFile(
-		join(rootDir, "Caddyfile"),
-		[
-			"{",
-			"\tauto_https disable_redirects",
-			"}",
-			"",
-			"https://localhost:{$CADDY_ELECTRIC_PORT} {",
-			"\treverse_proxy localhost:{$WRANGLER_PORT} {",
-			"\t\tflush_interval -1",
-			"\t}",
-			"}",
-			"",
-		].join("\n"),
-	);
-
-	writeFile(
-		join(rootDir, "apps", "electric-proxy", ".dev.vars"),
-		[
-			`AUTH_URL=http://localhost:${ports.api}`,
-			`ELECTRIC_SHAPE_URL=http://localhost:${ports.electric}/v1/shape`,
-			`ELECTRIC_SECRET=${electricSecret}`,
-			"ELECTRIC_SOURCE_ID=",
-			"ELECTRIC_SOURCE_SECRET=",
-			"",
-		].join("\n"),
-	);
 
 	writeJson(join(scriptDir, "ports.json"), {
 		ports: [
@@ -311,16 +260,13 @@ function writeWorkspaceEnv(): void {
 			{ port: ports.desktopVite, label: "Desktop Vite" },
 			{ port: ports.desktopNotifications, label: "Notifications" },
 			{ port: ports.streams, label: "Streams" },
-			{ port: ports.electric, label: "Electric" },
-			{ port: ports.caddyElectric, label: "Caddy Electric" },
-			{ port: ports.wrangler, label: "Electric Proxy (Wrangler)" },
+			{ port: ports.streamsInternal, label: "Streams Internal" },
+			{ port: ports.codeInspector, label: "Code Inspector" },
 			{ port: ports.postgres, label: "Postgres" },
 			{ port: ports.neonProxy, label: "Neon Proxy" },
 		],
 	});
-	success(
-		"Workspace .env, Caddyfile, electric-proxy/.dev.vars, ports.json written",
-	);
+	success("Workspace .env and ports.json written");
 }
 
 async function startLocalDbStack(): Promise<void> {
@@ -339,6 +285,7 @@ async function startLocalDbStack(): Promise<void> {
 		join(rootDir, "docker-compose.yml"),
 		"up",
 		"-d",
+		"--remove-orphans",
 	]);
 	if (args.dryRun) {
 		success("DB stack ready (dry run)");
@@ -387,9 +334,7 @@ async function startLocalDbStack(): Promise<void> {
 	if (!proxyReady) {
 		throw new Error("neon-proxy did not become ready within 30s");
 	}
-	success(
-		`DB stack ready (pg :${ports.postgres}, proxy :${ports.neonProxy}, electric :${ports.electric})`,
-	);
+	success(`DB stack ready (pg :${ports.postgres}, proxy :${ports.neonProxy})`);
 }
 
 function applyMigrations(): void {

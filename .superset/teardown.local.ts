@@ -25,7 +25,7 @@ const project = `superset-${sanitizeName(workspaceName)}`;
 console.log(`Tearing down local DB stack (${project})...`);
 if (dryRun) {
 	console.log(
-		`[dry-run] docker compose -p ${project} -f ${join(rootDir, "docker-compose.yml")} down -v`,
+		`[dry-run] docker compose -p ${project} -f ${join(rootDir, "docker-compose.yml")} down -v --remove-orphans`,
 	);
 	process.exit(0);
 }
@@ -40,6 +40,7 @@ const result = spawnSync(
 		join(rootDir, "docker-compose.yml"),
 		"down",
 		"-v",
+		"--remove-orphans",
 	],
 	{ cwd: rootDir, stdio: "inherit", env: process.env, shell: false },
 );
