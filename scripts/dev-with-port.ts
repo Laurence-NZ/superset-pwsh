@@ -10,7 +10,22 @@ if (!envName || !defaultPort || !command) {
 }
 
 const port = process.env[envName] || defaultPort;
-const result = spawnSync("bun", ["x", command, ...args, "--port", port], {
+const commandArgs = [...args, "--port", port];
+
+if (
+	process.platform === "win32" &&
+	command === "next" &&
+	commandArgs[0] === "dev" &&
+	!commandArgs.includes("--webpack") &&
+	!commandArgs.includes("--turbopack")
+) {
+	commandArgs.splice(1, 0, "--webpack");
+	console.log(
+		"[dev-with-port] Using webpack because Next Turbopack emits invalid file URLs on Windows",
+	);
+}
+
+const result = spawnSync("bun", ["x", command, ...commandArgs], {
 	stdio: "inherit",
 	shell: false,
 	env: process.env,
