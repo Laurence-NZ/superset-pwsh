@@ -1113,6 +1113,27 @@ For **each** patch entry:
 - **Symptom if broken:** `superset status`, `superset auth whoami`, and other
   subcommands print root help with exit code 0 in a Windows build.
 
+## W36: Use Webpack for Next dev on Windows
+
+- **Commits:** `4d4246518`.
+- **Override policy:** **OVERRIDABLE.** Remove this fallback when Next or Sentry
+  accepts Sentry 10.68 instrumentation under Turbopack on Windows without
+  emitting malformed file URLs.
+- **Invariant:** on win32, the shared port-aware launcher inserts `--webpack`
+  for `next dev` unless the caller explicitly selected `--webpack` or
+  `--turbopack`. Other platforms retain Next's default Turbopack path.
+- **Where:** `scripts/dev-with-port.ts` (extends the launcher introduced by W1).
+- **Scan for:** changes that remove the win32 bundler selection or bypass the
+  shared launcher in a Next app's `dev` script.
+- **Symptom if broken:** `bun run dev:desktop` starts the API, then exits while
+  loading `apps/api/src/instrumentation.ts` with `ERR_INVALID_FILE_URL_PATH` and
+  a malformed Windows URL such as `file:\D:\...`.
+- **Known non-fix:** clearing `apps/api/.next` does not help; a clean Turbopack
+  build reproduces the same malformed URL.
+- **Verify:** run `bun run dev:desktop --ui=stream --log-order=stream --no-color`;
+  confirm the API reports Next webpack, `/api/auth/get-session` returns 200,
+  and Electron loads the renderer.
+
 ---
 
 # §2 — Features & fixes
