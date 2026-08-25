@@ -37,6 +37,7 @@ import {
 	Section,
 } from "../AgentFormControls";
 import { AgentIconPicker } from "../AgentIconPicker";
+import { getAgentHooksSwitchState } from "./agentHooksUiState";
 
 interface AgentDetailProps {
 	config: HostAgentConfig;
@@ -64,7 +65,12 @@ export function AgentDetail({
 		electronTrpc.settings.getAgentHooksDisabled.useQuery(undefined, {
 			enabled: isHooksSetupTarget,
 		});
+	const { data: platform } = electronTrpc.window.getPlatform.useQuery();
 	const hooksEnabled = !disabledHooksQuery.data?.includes(config.presetId);
+	const {
+		checked: hooksSwitchChecked,
+		disabledByPlatform: areManagedHooksUnavailable,
+	} = getAgentHooksSwitchState(platform, hooksEnabled);
 	const setHooksEnabledMutation =
 		electronTrpc.settings.setAgentHooksEnabled.useMutation({
 			onSettled: () => {
@@ -269,27 +275,35 @@ export function AgentDetail({
 						<div className="flex items-center justify-between gap-8">
 							<div className="min-w-0 flex-1">
 								<div className="flex items-center gap-1.5">
-									<div className="text-sm font-medium">Superset hooks</div>
+									<div
+										className={
+											areManagedHooksUnavailable
+												? "text-sm font-medium text-muted-foreground"
+												: "text-sm font-medium"
+										}
+									>
+										Superset hooks
+									</div>
 									<Tooltip>
 										<TooltipTrigger asChild>
 											<Info className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
 										</TooltipTrigger>
 										<TooltipContent side="top" className="max-w-[320px]">
-											Registers lifecycle hooks in this agent's global config so
-											Superset can show status and send notifications. Turning
-											this off removes Superset's entries everywhere — status
-											and notifications stop for this agent, including inside
-											Superset.
+											{areManagedHooksUnavailable
+												? "Superset does not modify agent hook configuration on Windows. Configure hooks manually if you want status and notifications."
+												: "Registers lifecycle hooks in this agent's global config so Superset can show status and send notifications. Turning this off removes Superset's entries everywhere. Status and notifications stop for this agent, including inside Superset."}
 										</TooltipContent>
 									</Tooltip>
 								</div>
 								<p className="text-sm text-muted-foreground mt-0.5">
-									Show status and send notifications for this agent.
+									{areManagedHooksUnavailable
+										? "Managed hook setup is unavailable on Windows."
+										: "Show status and send notifications for this agent."}
 								</p>
 							</div>
 							<Switch
 								aria-label="Superset hooks"
-								checked={hooksEnabled}
+								checked={hooksSwitchChecked}
 								onCheckedChange={(enabled) =>
 									setHooksEnabledMutation.mutate({
 										agentId: config.presetId,
@@ -297,6 +311,7 @@ export function AgentDetail({
 									})
 								}
 								disabled={
+									areManagedHooksUnavailable ||
 									disabledHooksQuery.isLoading ||
 									setHooksEnabledMutation.isPending
 								}
