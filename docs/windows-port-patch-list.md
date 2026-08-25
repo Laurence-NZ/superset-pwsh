@@ -316,18 +316,23 @@ For **each** patch entry:
   (`createGrokHooksJson` / `createGrokConfigToml`); `30d3492f4`, `a4594974b`
   (kept upstream's per-agent setup/teardown user-owned on Windows and extended
   the guard to Amp, Droid, Mastra, and Vibe.); `ff5531ef4` (removed the merged
-  wrapper test's obsolete helper import.)
+  wrapper test's obsolete helper import.); `a7955c288` (disabled the per-agent
+  managed-hooks switches on Windows and explained that hook configuration stays
+  user-owned.)
 - **Override policy:** **LOCKED** (Windows-specific no-op).
 - **Invariant:** On win32, per-agent setup and teardown must not create, edit,
   or remove global hook config. This covers Amp, Claude, Codex, Cursor, Droid,
   Gemini, Grok, Kimi, Mastra, Pi, and Vibe. The user owns those files and wires
   hooks manually. Wrapper and shared hook-script writers still run; they do not
-  mutate agent-owned config. Windows-capable notify commands remain disabled by
-  preference, not by command limitations.
+  mutate agent-owned config. The per-agent "Superset hooks" switch is forced
+  off and disabled on Windows, with copy explaining that managed setup is
+  unavailable, so the UI does not imply the stubbed setup changed agent files.
 - **Where:** `packages/agent-setup/src/agent-wrappers-{amp,claude-codex-opencode,cursor,droid,gemini,grok,kimi,mastra,pi,vibe}.ts`.
+- **Where (UI):** `apps/desktop/src/renderer/routes/_authenticated/settings/agents/components/V2AgentsSettings/components/AgentDetail/AgentDetail.tsx`.
 - **Scan for:** any win32 path that creates, edits, or removes an agent-global
   hook file, including new per-agent setup/teardown actions. Keep wrapper and
-  shared hook-script generation enabled.
+  shared hook-script generation enabled. Also flag the per-agent switch becoming
+  interactive or appearing enabled on Windows.
 - **Verify tests (Windows):** Run the notify-hook and wrapper tests in separate
   Bun processes; `agent-wrappers.test.ts` mocks `./notify-hook` at module scope,
   so combining them contaminates `notify-hook.test.ts`. Filter the wrapper run
