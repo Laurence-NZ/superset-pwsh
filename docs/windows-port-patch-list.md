@@ -113,7 +113,11 @@ For **each** patch entry:
   `a9bc07294` (made upstream's trustd temp-path and daemon socket-path tests
   accept native Windows paths.);
   `166efbb0e` (passes the Electron-as-Node tsx loader to Node's `--import` as a
-  `file://` URL so Windows drive-letter paths are not parsed as URL schemes.)
+  `file://` URL so Windows drive-letter paths are not parsed as URL schemes.);
+  `a39dcdc32` (2026-08-25 merge: aligned the native Windows workspace setup and
+  teardown wrappers with upstream's retired Electric/Caddy stack, preserved the
+  existing port-offset gaps, and removed orphaned services during Docker
+  lifecycle commands.)
 - **Override policy:** **LOCKED.** Upstream targets macOS/Linux; there is no
   upstream Windows port to defer to. Later, finer-grained W-entries refine and
   extend this base; verify them individually as they are migrated in.
