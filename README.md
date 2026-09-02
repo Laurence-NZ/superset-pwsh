@@ -1,3 +1,7 @@
+> [!IMPORTANT]
+> **This fork is archived and no longer maintained.** Use
+> [Orca](https://github.com/stablyai/orca) instead - its better in every way and comes with native Windows support.
+
 # superset-pwsh - superset-sh for windows
 
 Yet another unofficial native-Windows fork of [Superset](https://github.com/superset-sh/superset).
